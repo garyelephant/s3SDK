@@ -1,0 +1,7 @@
+tags
+*.pyc
+*~
+.xptsnip.vim
+*.db
+*.o
+*.so
