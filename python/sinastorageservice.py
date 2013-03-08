@@ -25,11 +25,15 @@ import hmac
 import httplib
 import urllib
 
+
+
 def fsize( f ):
     st = os.fstat( f.fileno() )
     return st[ stat.ST_SIZE ]
 
+
 class S3Error( Exception ): pass
+
 
 class S3( object ):
     
@@ -39,7 +43,8 @@ class S3( object ):
         
         self.accesskey = 'SYS0000000000SANDBOX' if accesskey is None else accesskey
         
-        if '0' not in self.accesskey:
+        if len( self.accesskey ) != len( 'SYS0000000000SANDBOX' ) \
+                or '0' not in self.accesskey:
             raise S3Error, 'accesskey "%s" is illegal.' % self.accesskey
         
         self.nation = self.accesskey.split( '0' )[0].lower()
@@ -49,6 +54,7 @@ class S3( object ):
         self.project = 'sandbox' if project is None else project
         
         self.domain = 'sinastorage.com'
+        self.up_domain = 'up.sinastorage.com'
         self.port = 80
         self.timeout = 3 * 60
         
@@ -58,8 +64,13 @@ class S3( object ):
         self.query = {}
     
     
-    def set_https( self ):
-        pass
+    def set_https( self, **ssl ):
+        
+        self.port = 4443
+        
+        seif.ssl_auth = {}
+        seif.ssl_auth['key_file'] = ssl.get( 'key_file', '')
+        seif.ssl_auth['cert_file'] = ssl.get( 'cert_file', '')
     
     def set_domain( self, domain ):
         self.domain = domain
@@ -77,11 +88,13 @@ class S3( object ):
     def get_upload_idc( self ):
         
         try:
-            h = httplib.HTTPConnection( 'up.sinastorage.com', self.port )
+            h = httplib.HTTPConnection( self.up_domain, self.port )
             h.putrequest( 'GET', '/?extra&op=domain.json' )
             h.endheaders()
             resp = h.getresponse()
+            
             return resp.read().strip().strip( '"' )
+            
         finally:
             pass
     
@@ -89,7 +102,7 @@ class S3( object ):
     def get_upload_id( self, key ):
         
         if self.domain == 'sinastorage.com':
-            self.set_domain( 'up.sinastorage.com' )
+            self.set_domain( self.up_domain )
         
         self.extra = '?uploads'
         args = self.uploadquery( 'POST', key )
@@ -119,7 +132,7 @@ class S3( object ):
     def upload_part( self, key, uploadid, partnum, partfile ):
         
         if self.domain == 'sinastorage.com':
-            self.set_domain( 'up.sinastorage.com' )
+            self.set_domain( self.up_domain )
         
         flen = os.path.getsize( partfile )
         
@@ -150,7 +163,7 @@ class S3( object ):
     def list_parts( self, key, uploadid, ):
         
         if self.domain == 'sinastorage.com':
-            self.set_domain( 'up.sinastorage.com' )
+            self.set_domain( self.up_domain )
     
         self.extra = '?uploadId=%s' % ( uploadid, )
         args = self.uploadquery( 'GET', key )
@@ -197,7 +210,7 @@ class S3( object ):
     def merge_parts( self, key, uploadid, mergefile ):
         
         if self.domain == 'sinastorage.com':
-            self.set_domain( 'up.sinastorage.com' )
+            self.set_domain( self.up_domain )
         
         flen = os.path.getsize( mergefile )
         
