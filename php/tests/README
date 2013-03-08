@@ -1,0 +1,22 @@
+This is a file telling how to install PHPUnit and how to use it.
+
+Installation
+PHPUnit should be installed using the PEAR Installer.
+
+1 "sudo pear upgrade PEAR" usually suffices to upgrade an existing PEAR installation.
+  Following two commands explain how to perform a fresh installation of PEAR.
+  (1) wget http://pear.php.net/go-pear.phar
+  (2) php go-pear.phar
+
+2 The following two commands (which you may have to run as root) are all that is required
+  to install PHPUnit using the PEAR Installer:
+  (1) pear config-set auto_discover 1
+  (2) pear install pear.phpunit.de/PHPUnit
+
+
+Usage
+1 Enter directory tests/ (probably is current working directory),input command
+  "phpunit SinaStorageServiceTest.php",this can test all test cases in file
+  SinaStorageServiceTest.php.
+2 For more information: http://www.phpunit.de/manual/current/en/textui.html
+

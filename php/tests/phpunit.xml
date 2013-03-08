@@ -1,0 +1,15 @@
+<phpunit>
+  <testsuites>
+    <testsuite name="Sinastorage">
+      <directory>.</directory>
+    </testsuite>
+  </testsuites>
+  <groups>
+    <include>
+<!---  <group>getFile</group>-->
+    </include>
+    <exclude>
+      <group></group>
+    </exclude>
+  </groups>
+</phpunit>
