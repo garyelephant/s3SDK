@@ -5,3 +5,5 @@ tags
 *.db
 *.o
 *.so
+*.log
+
