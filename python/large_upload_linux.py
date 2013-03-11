@@ -91,8 +91,10 @@ if __name__ == '__main__':
     
     errorfile = open( 'log.log', 'a' )
     
+    filesdir = '/data0'
+    
     files = filter( lambda x: x.split( '.' )[-1] in ( 'mkv', 'rmvb', 'mp4', 'avi' ), \
-                            glob.glob( '%s\*' % ( os.path.join( 'C:\\', 'bdacc' ), ) ) )
+                            glob.glob( '%s/*' % ( os.path.join( filesdir, '' ), ) ) )
     
     project = 'shenjieproj'
     accesskey = 'SINA000000000SHENJIE'

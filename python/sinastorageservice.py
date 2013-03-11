@@ -39,6 +39,11 @@ class S3( object ):
     
     """ python SDK for Sina Storage Service """
     
+    DEFAULT_DOMAIN = 'sinastorage.com'
+    DEFAULT_UP_DOMAIN = 'up.sinastorage.com'
+    HTTP_OK = 200
+    HTTP_DELETE = 204
+    
     def __init__( self, accesskey = None, secretkey = None, project = None ):
         
         self.accesskey = 'SYS0000000000SANDBOX' if accesskey is None else accesskey
@@ -53,24 +58,29 @@ class S3( object ):
         self.secretkey = '1' * 40 if secretkey is None else secretkey
         self.project = 'sandbox' if project is None else project
         
-        self.domain = 'sinastorage.com'
-        self.up_domain = 'up.sinastorage.com'
+        self.domain = self.DEFAULT_DOMAIN
+        self.up_domain = self.DEFAULT_UP_DOMAIN
+        
         self.port = 80
-        self.timeout = 3 * 60
+        self.timeout = 60
         
         self.expires = 30 * 60
         
         self.extra = '?'
         self.query = {}
-    
+        
+        self.is_ssl = False
+        self.ssl_auth = {}
+        
     
     def set_https( self, **ssl ):
         
+        self.is_ssl = True
         self.port = 4443
+        self.timeout = 3 * 60
         
-        seif.ssl_auth = {}
-        seif.ssl_auth['key_file'] = ssl.get( 'key_file', '')
-        seif.ssl_auth['cert_file'] = ssl.get( 'cert_file', '')
+        self.ssl_auth['key_file'] = ssl.get( 'key_file', '')
+        self.ssl_auth['cert_file'] = ssl.get( 'cert_file', '')
     
     def set_domain( self, domain ):
         self.domain = domain
@@ -78,42 +88,54 @@ class S3( object ):
     def set_extra( self, extra ):
         self.extra = extra
     
-    def upload( self ):
-        pass
+    def set_expires( self, expires ):
+        self.expires = expires
     
-    def download( self ):
-        pass
     
+    # large file upload step:
+    # 1. get upload idc : get a domain to hold during uploading a file
+    # 2. get upload id  : get a uploadid to bind during uploading parts
+    # 3. upload part    : upload a part
+    # 4. list parts     : list the parts that are uploaded to server
+    # 5. merge part     : merge all parts after uplaod all parts
     
     def get_upload_idc( self ):
         
+        self.set_domain( self.up_domain )
+        
         try:
-            h = httplib.HTTPConnection( self.up_domain, self.port )
+            h = self._http_handle()
             h.putrequest( 'GET', '/?extra&op=domain.json' )
             h.endheaders()
             resp = h.getresponse()
             
-            return resp.read().strip().strip( '"' )
-            
+            return resp.status == self.HTTP_OK, resp
+        
+        except Exception, e:
+            raise S3Error, " Get upload idc error : '%s' " % \
+                    ( repr( e ), )
+        
         finally:
             pass
     
-    
     def get_upload_id( self, key ):
         
-        if self.domain == 'sinastorage.com':
+        if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
         
         self.extra = '?uploads'
-        args = self.uploadquery( 'POST', key )
         
+        args = self.uploadquery( 'POST', key )
         uri = args[ 0 ]
         
         try:
-            h = httplib.HTTPConnection( self.domain, self.port )
+            h = self._http_handle()
             h.putrequest( 'POST', uri )
             h.endheaders()
             resp = h.getresponse()
+            
+            if resp.status != self.HTTP_OK:
+                return False, resp
             
             data = resp.read()
             
@@ -121,32 +143,37 @@ class S3( object ):
             
             r = re.compile( '<UploadId>(.{32})</UploadId>' )
             r = r.search( data )
+            
             if r:
-                return r.groups()[0]
+                return True, r.groups()[0]
             else:
-                raise S3Error, "get uploadid failed. return '%s'" % ( data )
-        finally:
-            pass
-    
+                raise S3Error, " '%s' get uploadid failed. return '%s'" % \
+                        ( key, data, )
+            
+        except Exception, e:
+            raise S3Error, " '%s' get uploadid error : '%s'" % \
+                            ( key, repr( e ), )
     
     def upload_part( self, key, uploadid, partnum, partfile ):
         
-        if self.domain == 'sinastorage.com':
+        if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
         
         flen = os.path.getsize( partfile )
         
-        self.extra = '?partNumber=%s&uploadId=%s' % ( str( partnum ), uploadid, )
-        args = self.uploadquery( 'PUT', key )
+        self.extra = '?partNumber=%s&uploadId=%s' % \
+                ( str( partnum ), str( uploadid ), )
         
+        args = self.uploadquery( 'PUT', key )
         uri = args[ 0 ]
         
         f = open( partfile, 'rb' )
         try:
-            h = httplib.HTTPConnection( self.domain, self.port )
+            h = self._http_handle()
             h.putrequest( 'PUT', uri )
             h.putheader( "Content-Length", str( flen ) )
             h.endheaders()
+            
             while True:
                 data = f.read( 1024 * 1024 )
                 if data == '':
@@ -155,30 +182,34 @@ class S3( object ):
                 
             resp = h.getresponse()
             
-            return resp
+            return resp.status == self.HTTP_OK, resp
+        
+        except Exception, e:
+            raise S3Error, " '%s' upload part '%s:%s', error : '%s'" % \
+                            ( key, uploadid, str( partnum ), repr( e ), )
         
         finally:
             f.close()
     
-    def list_parts( self, key, uploadid, ):
+    def list_parts( self, key, uploadid ):
         
-        if self.domain == 'sinastorage.com':
+        if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
-    
+        
         self.extra = '?uploadId=%s' % ( uploadid, )
-        args = self.uploadquery( 'GET', key )
+        args = self.downloadquery( 'GET', key )
         
         uri = args[ 0 ]
         
         try:
-            h = httplib.HTTPConnection( self.domain, self.port )
+            h = self._http_handle()
             h.putrequest( 'GET', uri )
             h.endheaders()
             
             resp = h.getresponse()
             
-            if resp.status != 200:
-                raise S3Error, "list part failed. return code '%s'" % ( resp.status, )
+            if resp.status != self.HTTP_OK:
+                return False, resp
             
             data = resp.read().strip()
             
@@ -202,14 +233,16 @@ class S3( object ):
                 tr = True
                 pr = []
             
-            return tr, pr 
+            return True, pr
+            #return True, ( tr, pr[ : ] )
         
-        finally:
-            pass
+        except Exception, e:
+            raise S3Error, " '%s' list parts, uploadid '%s', error : '%s'" % \
+                            ( key, uploadid, repr( e ), )
     
     def merge_parts( self, key, uploadid, mergefile ):
         
-        if self.domain == 'sinastorage.com':
+        if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
         
         flen = os.path.getsize( mergefile )
@@ -221,10 +254,11 @@ class S3( object ):
         
         f = open( mergefile, 'rb' )
         try:
-            h = httplib.HTTPConnection( self.domain, self.port )
+            h = self._http_handle()
             h.putrequest( 'POST', uri )
             h.putheader( "Content-Length", str( flen ) )
             h.endheaders()
+            
             while True:
                 data = f.read( 1024 * 1024 )
                 if data == '':
@@ -233,12 +267,57 @@ class S3( object ):
                 
             resp = h.getresponse()
             
-            return resp
+            return resp.status == self.HTTP_OK, resp
+        
+        except Exception, e:
+            raise S3Error, " '%s' merge file, uplodid '%s', error : '%s'" % \
+                            ( key, uploadid, repr( e ), )
         
         finally:
             f.close()
     
-    def put( self, key, fn ):
+    
+    def upload( self, key, fn ):
+        
+        resp = self._put( key, fn )
+        
+        return resp.status == self.HTTP_OK, resp
+    
+    
+    def download( self, key ):
+        
+        return self.getFile( key )
+    
+    
+    def getFile( self, key ):
+        
+        args = self.downloadquery( key )
+        
+        uri = args[ 0 ]
+        
+        try:
+            h = self._http_handle()
+            h.putrequest( 'GET', uri )
+            h.endheaders()
+            
+            resp = h.getresponse()
+            
+            return resp.status == self.HTTP_OK, resp.read()
+            
+        except Exception, e:
+            raise S3Error, "getfile '%s' error : '%s'" % \
+                        ( key, repr( e ), )
+    
+    def getFileUrl( self, key ):
+        
+        args = self.downloadquery( key )
+        
+        uri = args[ 0 ]
+        
+        return True, 'http://%s%s' % \
+                    ( self.DEFAULT_DOMAIN, uri )
+    
+    def _put( self, key, fn ):
         
         flen = os.path.getsize( fn )
         
@@ -250,10 +329,11 @@ class S3( object ):
         
         f = open( fn, 'rb' )
         try:
-            h = httplib.HTTPConnection( self.domain, self.port )
+            h = self._http_handle()
             h.putrequest( 'PUT', uri )
             h.putheader( "Content-Length", str( flen ) )
             h.endheaders()
+            
             while True:
                 data = f.read( 1024 * 1024 )
                 if data == '':
@@ -261,16 +341,38 @@ class S3( object ):
                 h.send( data )
             resp = h.getresponse()
             return resp
+        
         finally:
             f.close()
     
     
-    def relax_upload( self ):
+    def relax_upload( self, rsha1, rlen ):
         
         self.extra = '?relax'
         
         metas = {}
-        metas['s-sina-length'] = str( Length )
+        metas['s-sina-sha1'] = str( rsha1 )
+        metas['s-sina-length'] = str( rlen )
+    
+    
+    def _http_handle( self ):
+        
+        try:
+            if self.is_ssl:
+                h = httplib.HTTPSConnection(    self.domain, \
+                                                self.port, \
+                                                timeout = self.timeout, \
+                                                **self.ssl_auth )
+            else:
+                h = httplib.HTTPConnection(     self.domain, \
+                                                self.port, \
+                                                timeout = self.timeout, )
+        except httplib.HTTPException, e:
+            
+            raise S3Error, "Connect '%s:%s' error : '%s' " % \
+                    ( self.domain, self.port, repr( e ), )
+    
+        return h
     
     
     def uploadquery( self, verb, key,
@@ -281,14 +383,14 @@ class S3( object ):
         
         hl = len( hashinfo )
         
-        if hl == 40 :  # sha1 hex
-            hk = 's-sina-sha1'
+        if hl == 40 :
+            hk = 's-sina-sha1'   # sha1 hex
         elif hl == 28 :
             hk = 'Content-SHA1'  # sha1 base64
         elif hl == 32 :
-            hk = 's-sina-md5'  # md5 hex
+            hk = 's-sina-md5'    # md5 hex
         elif hl == 24 :
-            hk = 'Content-MD5'  # md5 base64
+            hk = 'Content-MD5'   # md5 base64
         else:
             hk = ''
         
@@ -346,7 +448,7 @@ class S3( object ):
         mts = [ k + ':' + v for k, v in mts if k.startswith( 'x-sina-' ) or k.startswith( 'x-amz-meta-' ) ]
         mts.sort()
         
-        stringtosign = '\n'.join( [ verb, hashinfo, ct, dt ] + mts + [resource] )
+        stringtosign = '\n'.join( [ verb, hashinfo, ct, dt ] + mts + [ resource ] )
         
         ssig = hmac.new( self.secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
     
@@ -361,284 +463,55 @@ class S3( object ):
         return url, metas
     
     
-def put( ip, port, nation, accesskey, secretkey, project, key, fn ):
-    
-    flen = os.path.getsize( fn )
-    expires = str( time.time().__int__() + 60 * 5 )
-
-    args = uploadquery( nation, accesskey, secretkey, project, key, flen, expires = expires )
-
-    uri = args[ 0 ]
-    auth = args[ 1 ][ 'Authorization' ].split( " " )[ 1 ].split( ":" )[ 1 ]
-    print uri
-    uri = uri + "?" + "&".join( [ "KID=" + nation.lower() + "," + accesskey,
-                                  "Expires=" + expires,
-                                  "ssig=" + urllib.quote_plus( auth ), ] )
-    print uri
-    # # compatible with python2.4
-    # with open( fn, 'r' ) as f:
-    f = open( fn, 'r' )
-    try:
-        h = httplib.HTTPConnection( ip, port )
-        h.putrequest( 'PUT', uri )
-        h.putheader( "Content-Length", str( fsize( f ) ) )
-        h.endheaders()
-        while True:
-            data = f.read( 1024 * 1024 * 10 )
-            if data == '':
-                break
-            h.send( data )
-        # h.request( 'PUT', uri, f.fileno() )
-        resp = h.getresponse()
-        return resp
-    finally:
-        f.close()
-
-
-def get( ip, port, nation, accesskey, secretkey, project, key ):
-    expires = str( time.time().__int__() + 60 * 5 )
-
-    args = downloadquery( nation, accesskey, secretkey, project, key, expires = expires )
-
-    uri = args[ 0 ]
-    auth = args[ 1 ][ 'Authorization' ].split( " " )[ 1 ].split( ":" )[ 1 ]
-    
-    uri = uri + "?" + "&".join( [ "KID=" + nation.lower() + "," + accesskey,
-                                  "Expires=" + expires,
-                                  "ssig=" + urllib.quote_plus( auth ), ] )
-
-    h = httplib.HTTPConnection( ip, port )
-    h.request( 'GET', uri )
-    resp = h.getresponse()
-
-    return resp
-
-def uploadquery( nation, accesskey, secretkey,
-                 project, key,
-                 Length, hashinfo = '',
-                 expires = None,
-                 metas = {},
-                 relax = False,
-                 **kwargs ) :
-
-
-    hl = len( hashinfo )
-
-    if hl == 40 :  # sha1 hex
-        hk = 's-sina-sha1'
-    elif hl == 28 :
-        hk = 'Content-SHA1'  # sha1 base64
-    elif hl == 32 :
-        hk = 's-sina-md5'  # md5 hex
-    elif hl == 24 :
-        hk = 'Content-MD5'  # md5 base64
-    else:
-        hk = ''
-
-    et = type( expires )
-
-    if et in types.StringTypes :
-        dt = expires.encode( 'utf-8' )
-    elif et == types.NoneType :
-        dt = datetime.datetime.utcnow()  # +datetime.timedelta( seconds=900 )
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-    elif et == datetime.timedelta :
-        dt = datetime.datetime.utcnow() + expires
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-    elif et == datetime.datetime :
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-
-    metas = metas.copy()
-
-    if hk != '':
-        metas[hk] = hashinfo
-
-    if 'decovered' in kwargs :
-        metas['x-sina-decovered'] = bool( kwargs['decovered'] )
-
-    if 'autoclean' in kwargs :
-        ac = kwargs['autoclean']
-        tac = type( ac )
-        if tac in ( types.IntType, types.LongType ) :
-            metas['s-sina-expires-ctime'] = "%d" % ( ac, )
-        elif tac in types.StringTypes :
-            metas['s-sina-expires'] = ac.encode( 'utf-8' )
-        elif tac == datetime.datetime :
-            metas['s-sina-expires'] = ac.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-
-    key = key.encode( 'utf-8' )
-    resource = "/" + str( project ) + "/" + key
-
-    h = kwargs.get( 'vhost', False )
-    # # compatible with python2.4
-    # url = '/'+key if h else resource
-    if h:
-        url = '/' + key
-    else:
-        url = resource
-
-    qs = []
-
-    if relax :
-        resource += '?relax'
-        qs += ['relax']
-        metas['s-sina-length'] = str( Length )
-    else :
-        metas['Content-Length'] = str( Length )
-
-    ct = metas.get( 'Content-Type', '' )
-
-    mts = [ ( str( k ).lower(), v.encode( 'utf-8' ) ) for k, v in metas.items() ]
-    mts = [ k + ':' + v for k, v in mts if k.startswith( 'x-sina-' ) or k.startswith( 'x-amz-meta-' ) ]
-    mts.sort()
-
-    stringtosign = '\n'.join( ["PUT", hashinfo, ct, dt] + mts + [resource] )
-    print stringtosign
-    ssig = hmac.new( secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
-
-    metas['Date'] = dt
-    metas['Authorization'] = nation.upper() + ' ' + accesskey + ':' + \
-                             ssig[5:15]
-
-    url += '&'.join( qs )
-    
-    return url, metas
-
-
-def downloadquery( nation, accesskey, secretkey,
-                   project, key,
-                   expires = None,
-                   metas = {},
-                   **kwargs ) :
-
-    et = type( expires )
-
-    if et in types.StringTypes :
-        dt = expires.encode( 'utf-8' )
-    elif expires is None :
-        dt = datetime.datetime.utcnow()
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-    elif et == datetime.timedelta :
-        dt = datetime.datetime.utcnow() + expires
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-    elif et == datetime.datetime :
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-
-
-    key = key.encode( 'utf-8' )
-    resource = "/" + str( project ) + "/" + key
-
-    h = kwargs.get( 'vhost', False )
-    # # compatible with python2.4
-    # url = '/'+key if h else resource
-    if h:
-        url = '/' + key
-    else:
-        url = resource
-
-
-    stringtosign = '\n'.join( ["GET", "", "", dt] + [resource] )
-
-    ssig = hmac.new( secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
-
-    metas['Date'] = dt
-    metas['Authorization'] = nation.upper() + ' ' + accesskey + ':' + \
-                             ssig[5:15]
-
-    return url, metas
-
-
-def deletequery( nation, accesskey, secretkey,
-                 project, key,
-                 metas = {},
-                 **kwargs ) :
-
-    key = key.encode( 'utf-8' )
-    resource = "/" + str( project ) + "/" + key
-
-    h = kwargs.get( 'vhost', False )
-    # # compatible with python2.4
-    # url = '/' + key if h else resource
-    if h:
-        url = '/' + key
-    else:
-        url = resource
-
-    for k, v in metas.items():
-        if "date" in k:
-            et = type( metas[k] )
-            if et in types.StringTypes :
-                metas[k] = metas[k].encode( 'utf-8' )
-            elif et == NoneType :
-                metas[k] = datetime.datetime.utcnow()
-                metas[k] = metas[k].strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-            elif et == datetime.timedelta :
-                metas[k] = datetime.datetime.utcnow() + expires
-                metas[k] = metas[k].strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-            elif et == datetime.datetime :
-                metas[k] = metas[k].strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-
-    mts = [ ( str( k ).lower(), v.encode( 'utf-8' ) ) for k, v in metas.items() ]
-    mts = [ k + ':' + v for k, v in mts if "date" in k ]
-    mts.sort()
-
-
-    stringtosign = '\n'.join( ["DELETE", "", "", "" ] + mts + [resource] )
-    stringtosign.encode( 'utf-8' )
-
-    ssig = hmac.new( secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
-
-    metas['Authorization'] = nation.upper() + ' ' + accesskey + ':' + \
-                             ssig[5:15]
-
-    return url, metas
-
-
-def copyquery( nation, accesskey, secretkey,
-               destinationbucket, destinationObject,
-               Date,
-               metas = {},
-               **kwargs ) :
-
-    destinationObject = destinationObject.encode( 'utf-8' )
-    resource = "/" + str( destinationbucket ) + "/" + destinationObject
-
-    h = kwargs.get( 'vhost', False )
-    # # compatible with python2.4
-    # url = '/' + destinationObject if h else resource
-    if h:
-        url = '/' + destinationObject
-    else:
-        url = resource
-
-
-    et = type( Date )
-
-    if et in types.StringTypes :
-        dt = Date.encode( 'utf-8' )
-    elif et == types.NoneType :
-        dt = datetime.datetime.utcnow()
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-    elif et == datetime.timedelta :
-        dt = datetime.datetime.utcnow() + expires
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-    elif et == datetime.datetime :
-        dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-
-
-    mts = [ ( str( k ).lower(), v.encode( 'utf-8' ) ) for k, v in metas.items() ]
-    mts = [ k + ':' + v for k, v in mts if 'source' in k ]
-    mts.sort()
-
-    stringtosign = '\n'.join( ["PUT", "", "", dt ] + mts + [resource] )
-
-    ssig = hmac.new( secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
-
-    metas['Authorization'] = nation.upper() + ' ' + accesskey + ':' + \
-                             ssig[5:15]
-
-    return url, metas
-
+    def downloadquery( self, key,
+                       expires = None,
+                       metas = {},
+                       **kwargs ) :
+
+        if expires is None:
+            expires = str( time.time().__int__() + self.expires )
+
+        et = type( expires )
+
+        if et in types.StringTypes :
+            dt = expires.encode( 'utf-8' )
+        elif expires is None :
+            dt = datetime.datetime.utcnow()
+            dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
+        elif et == datetime.timedelta :
+            dt = datetime.datetime.utcnow() + expires
+            dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
+        elif et == datetime.datetime :
+            dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
+
+        key = key.encode( 'utf-8' )
+        resource = "/" + str( self.project ) + "/" + key
+
+        h = kwargs.get( 'vhost', False )
+        # # compatible with python2.4
+        # url = '/'+key if h else resource
+        if h:
+            url = '/' + key
+        else:
+            url = resource
+
+        if self.extra != '?':
+            resource += self.extra
+            url += self.extra + '&'
+        else:
+            url += self.extra
+        
+        stringtosign = '\n'.join( ["GET", "", "", dt] + [ resource ] )
+
+        ssig = hmac.new( self.secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
+
+        metas['Date'] = dt
+        metas['Authorization'] = self.nation.upper() + ' ' + self.accesskey + ':' + ssig[5:15]
+
+        url += "&".join( [  "KID=" + self.nation.lower() + "," + self.accesskey,
+                            "Expires=" + dt,
+                            "ssig=" + ssig[5:15], ] )
+        return url, metas
 
 
 if __name__ == '__main__':

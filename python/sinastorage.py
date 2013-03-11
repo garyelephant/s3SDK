@@ -36,6 +36,7 @@ def put( ip, port, nation, accesskey, secretkey, project, key, fn ):
     args = uploadquery( nation, accesskey, secretkey, project, key, flen, expires = expires )
 
     uri = args[ 0 ]
+
     auth = args[ 1 ][ 'Authorization' ].split( " " )[ 1 ].split( ":" )[ 1 ]
 
     uri = uri + "?" + "&".join( [ "KID=" + nation.lower() + "," + accesskey,
