@@ -6,8 +6,6 @@ import copy
 import types
 import time
 import datetime
-import urllib
-
 
 # # compatible with python2.4
 # import hashlib
@@ -26,12 +24,17 @@ except ImportError:
 import hmac
 import httplib
 import urllib
+import mimetypes
 
+
+def ftype( f ):
+    tp = mimetypes.guess_type( f )[ 0 ]
+    return tp if tp is not None else ''
 
 
 def fsize( f ):
-    st = os.fstat( f.fileno() )
-    return st[ stat.ST_SIZE ]
+    return os.path.getsize( f )
+
 
 
 class S3Error( Exception ): pass
@@ -166,10 +169,9 @@ class S3( object ):
         if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
 
-        self.extra = '?uploads'
-
-        args = self.uploadquery( 'POST', key )
-        uri = args[ 0 ]
+        uri = self._signature( 'POST', key, \
+                                ex_extra = 'uploads',
+                                )
 
         try:
             h = self._http_handle()
@@ -202,22 +204,23 @@ class S3( object ):
         if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
 
-        flen = os.path.getsize( partfile )
+        qs = {  'uploadId' : str( uploadid ),
+                'partNumber' : str( partnum ) }
 
-        self.extra = '?partNumber=%s&uploadId=%s' % \
-                ( str( partnum ), str( uploadid ), )
+        rh = {  'Content-Type' : str( ftype( partfile ) ),
+                'Content-Length' : str( fsize( partfile ) ) }
 
-        #self.set_query_string(  partNumber = str( partnum ),
-        #                        uploadId = str( uploadid ) )
-
-        args = self.uploadquery( 'PUT', key )
-        uri = args[ 0 ]
+        uri = self._signature( 'PUT', key,
+                                ex_query_string = qs,
+                                ex_requst_header = rh,
+                                )
 
         f = open( partfile, 'rb' )
         try:
             h = self._http_handle()
             h.putrequest( 'PUT', uri )
-            h.putheader( "Content-Length", str( flen ) )
+            for k in rh:
+                h.putheader( k, rh[ k ] )
             h.endheaders()
 
             while True:
@@ -242,13 +245,11 @@ class S3( object ):
         if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
 
-        self.extra = '?uploadId=%s' % ( uploadid, )
+        qs = { 'uploadId' : str( uploadid ) }
 
-        # self.set_query_string( uploadId = uploadid )
-
-        args = self.downloadquery( 'GET', key )
-
-        uri = args[ 0 ]
+        uri = self._signature( 'GET', key,
+                                ex_query_string = qs,
+                                )
 
         try:
             h = self._http_handle()
@@ -294,21 +295,22 @@ class S3( object ):
         if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
 
-        flen = os.path.getsize( mergefile )
+        qs = {  'uploadId' : str( uploadid ) }
 
-        self.extra = '?uploadId=%s' % ( uploadid, )
+        rh = {  'Content-Type' : str( ftype( mergefile) ),
+                'Content-Length' : str( fsize( mergefile ) ) }
 
-        #self.set_query_string( uploadId = uploadid )
-
-        args = self.uploadquery( 'POST', key )
-
-        uri = args[ 0 ]
+        uri = self._signature( 'POST', key,
+                                ex_query_string = qs,
+                                ex_requst_header = rh,
+                                )
 
         f = open( mergefile, 'rb' )
         try:
             h = self._http_handle()
             h.putrequest( 'POST', uri )
-            h.putheader( "Content-Length", str( flen ) )
+            for k in rh:
+                h.putheader( k, rh[ k ] )
             h.endheaders()
 
             while True:
@@ -429,7 +431,20 @@ class S3( object ):
         return h
 
 
-    def _signature( self, verb, key ):
+    def _signature( self, verb, key, \
+                    ex_extra = '', \
+                    ex_query_string = None, \
+                    ex_requst_header = None ):
+
+        extra = self.extra + ex_extra
+
+        query_string = copy.deepcopy( self.query_string )
+        query_string.update( ex_query_string if \
+                            ex_query_string is not None else {}  )
+
+        requst_header = copy.deepcopy( self.requst_header )
+        requst_header.update( ex_requst_header if \
+                            ex_requst_header is not None else {} )
 
         key = key.encode( 'utf-8' )
         uri = ''
@@ -438,21 +453,20 @@ class S3( object ):
             uri = '/' + key
         else:
             uri = "/" + str( self.project ) + "/" + key
-
-        if self.extra != '?':
-            uri += self.extra + '&'
+        if extra != '?':
+            uri += extra + '&'
         else:
-            uri += self.extra
+            uri += extra
 
         qs = '&'.join( [ '%s=%s' % ( k, v, ) for \
-                            k, v in self.query_string.items() ] )
+                            k, v in query_string.items() ] )
         uri += qs + '&' if qs != '' else ''
 
         if not self.need_auth:
             return uri.rstrip( '?&' )
 
         rh = dict( [ ( str( k ).lower(), v.encode( 'utf-8' ) ) for \
-                k, v in self.requst_header.items() ] )
+                k, v in requst_header.items() ] )
 
         for t in ( 's-sina-sha1', 'content-sha1', \
                 's-sina-md5', 'content-md5' ):
