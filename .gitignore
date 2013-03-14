@@ -2,8 +2,10 @@ tags
 *.pyc
 *~
 .xptsnip.vim
+*.swp
 *.db
 *.o
 *.so
 *.log
 
+python/tempfile/tmp/

@@ -8,23 +8,11 @@ import datetime
 
 import re
 import hmac
+import hashlib
 import urllib
 import httplib
 import mimetypes
 
-# # compatible with python2.4
-# import hashlib
-try:
-    import hashlib
-    sha1 = hashlib.sha1
-except ImportError:
-    import sha
-    class Sha1:
-        digest_size = 20
-        def new( self, inp = '' ):
-            return sha.sha( inp )
-
-    sha1 = Sha1()
 
 
 def ftype( f ):
@@ -39,6 +27,11 @@ def fsize( f ):
 
 class S3Error( Exception ): pass
 
+class S3HTTPError( S3Error ): pass
+class S3HTTPCodeError( S3HTTPError ): pass
+
+class S3ResponseError( S3Error ): pass
+
 
 class S3( object ):
 
@@ -47,15 +40,12 @@ class S3( object ):
     DEFAULT_DOMAIN = 'sinastorage.com'
     DEFAULT_UP_DOMAIN = 'up.sinastorage.com'
 
-    HTTP_OK = 200
-    HTTP_DELETE = 204
-
     CHUNK = 1024 * 1024
 
     EXTRAS = [ 'copy' ]
     QUERY_STRINGS = [ 'ip', 'foo' ]
 
-    VERB2HTTPCODE = { 'DELETE' : HTTP_DELETE }
+    VERB2HTTPCODE = { 'DELETE' : httplib.NO_CONTENT }
 
     def __init__( self, accesskey = None,
                         secretkey = None,
@@ -65,10 +55,11 @@ class S3( object ):
 
         if len( self.accesskey ) != len( 'SYS0000000000SANDBOX' ) \
                 or '0' not in self.accesskey:
-            raise S3Error, "accesskey '%s' is illegal." % self.accesskey
+            raise S3Error, "accesskey '%s' is illegal." % ( self.accesskey, )
 
-        #UNDO like '0000000000xxxxxxxxxx'
         self.nation = self.accesskey.split( '0' )[0].lower()
+        self.nation = 'sae' if self.nation == '' else self.nation
+
         if self.nation == 'sae':
             self.accesskey = self.accesskey[ -10: ].lower()
         else:
@@ -77,10 +68,10 @@ class S3( object ):
         self.secretkey = secretkey or '1' * 40
         self.project = project or 'sandbox'
 
-        self.purge()
+        self.reset()
 
 
-    def purge( self ):
+    def reset( self ):
 
         self.domain = self.DEFAULT_DOMAIN
         self.up_domain = self.DEFAULT_UP_DOMAIN
@@ -112,10 +103,14 @@ class S3( object ):
     def set_attr( self, **kwargs ):
 
         for k in kwargs:
-            fun = getattr( self, 'set_' + k )
+            try:
+                fun = getattr( self, 'set_' + k )
 
-            if fun is not None:
-                fun( kwargs[ k ] )
+                if isCallable( fun ):
+                    fun( kwargs[ k ] )
+
+            except AttributeError:
+                continue
 
     def set_https( self, ssl = True,
                          port = 4443,
@@ -143,8 +138,8 @@ class S3( object ):
     def set_expires_delta( self, delta ):
         self.expires = time.time().__int__() + int( delta )
 
-    #def set_extra( self, extra = '?' ):
-    #    self.extra = extra
+    def set_extra( self, extra = '?' ):
+        self.extra = extra
 
     def set_need_auth( self, auth = True ):
         self.need_auth = auth
@@ -158,16 +153,13 @@ class S3( object ):
 
         self.vhost = bool( vhost )
 
-    def set_query_string( self, **kwargs ):
+    def set_query_string( self, qs = None ):
 
-        for k, v in kwargs.items():
-            self.query_string[ k ] = v
+        self.query_string.update( qs or {} )
 
-    def set_requst_header( self, **kwargs ):
+    def set_requst_header( self, rh = None ):
 
-        for k, v in kwargs.items():
-            self.requst_header[ k ] = v
-
+        self.requst_header.update( rh or {} )
 
 
     # large file upload steps:
@@ -186,14 +178,11 @@ class S3( object ):
         verb = 'GET'
         uri = '/?extra&op=domain.json'
 
-        tf, out = self._normal_return( func, verb, uri, out = True )
-
-        if not tf:
-            return tf, out
+        out = self._normal_return( func, verb, uri, out = True )
 
         domain = out.strip().strip( '"' )
 
-        return True, domain
+        return domain
 
 
     def get_upload_id( self, key, ct = None ):
@@ -209,10 +198,7 @@ class S3( object ):
         verb = 'POST'
         uri = self._signature(  verb, key )
 
-        tf, out = self._normal_return( func, verb, uri, out = True )
-
-        if not tf:
-            return tf, out
+        out = self._normal_return( func, verb, uri, out = True )
 
         out = out.strip()
         out = out.replace( '\n', '' ).replace( '\r', '' )
@@ -221,9 +207,9 @@ class S3( object ):
         r = r.search( out )
 
         if r:
-            return True, r.groups()[0]
+            return r.groups()[0]
         else:
-            return False, func.format( error = \
+            raise S3ResponseError, func.format( error = \
                 "key={key} out={info}'".format( key = key, info = out ), )
 
 
@@ -239,10 +225,7 @@ class S3( object ):
         verb = 'GET'
         uri = self._signature( verb, key )
 
-        tf, out = self._normal_return( func, verb, uri, out = True )
-
-        if not tf:
-            return tf, out
+        out = self._normal_return( func, verb, uri, out = True )
 
         out = out.strip()
 
@@ -264,8 +247,8 @@ class S3( object ):
             tr = True
             pr = []
 
-        return True, pr[ : ]
-        #return True, ( tr, pr[ : ] )
+        return pr[ : ]
+        #return ( tr, pr[ : ] )
 
 
     def upload_part( self, key, uploadid, partnum, partfile, ct = None, cl = None ):
@@ -366,6 +349,7 @@ class S3( object ):
 
         return self._normal_return( func, verb, uri, out = True )
 
+
     def get_file_url( self, key ):
 
         func = "get_file_url error='{error}'"
@@ -373,19 +357,13 @@ class S3( object ):
         verb = 'GET'
         uri = self._signature( verb, key )
 
-        if self.vhost:
-            url = '{domain}:{port}/{key}'.format(
-                    domain = self.project,
-                    port = self.port,
-                    key = key, )
-        else:
-            url = '{domain}:{port}/{project}/{key}'.format(
-                    domain = self.domain,
-                    port = self.port,
-                    project = self.project,
-                    key = key, )
+        url = '{domain}:{port}{uri}'.format(
+                domain = self.domain,
+                port = self.port,
+                uri = uri, )
 
-        return True, url
+        return url
+
 
     def get_file_meta( self, key ):
 
@@ -403,7 +381,7 @@ class S3( object ):
 
         func = "get_list error='{error}'"
 
-        self.intra_query[ 'formatter' ] = 'json'
+        self.intra_query[ None ] = 'formatter=json'
 
         verb = 'GET'
         uri = self._signature( verb )
@@ -468,18 +446,22 @@ class S3( object ):
         return self._normal_return( func, verb, uri )
 
 
-    def _normal_return( self, func, verb, uri, infile = None, out = False, httpcode = None ):
+    def _normal_return( self, func, verb, uri,
+                    infile = None,
+                    out = False,
+                    httpcode = None ):
 
         verb = verb.upper()
-
-        code = int( httpcode or self.VERB2HTTPCODE.get( verb, self.HTTP_OK ) )
+        code = int( httpcode or self.VERB2HTTPCODE.get( verb, httplib.OK ) )
 
         try:
-            resp = self._requst( verb, uri ) if infile is None \
+            resp = self._requst( verb, uri ) \
+                    if infile is None \
                     else self._requst_put( verb, uri, infile )
 
             if resp.status != code:
-                return False, func.format( error = self._resp_format( resp ), )
+
+                raise S3HTTPCodeError, func.format( error = self._resp_format( resp ), )
 
             if out:
                 data = ''
@@ -490,12 +472,13 @@ class S3( object ):
                         break
                     data += chunk
 
-                return True, data
-            else:
-                return True, self._resp_format( resp )
+                return data
+
+            return self._resp_format( resp )
 
         except Exception, e:
-            return False, func.format( error = repr( e ), )
+
+            raise
 
 
     def _resp_format( self, resp ):
@@ -528,11 +511,13 @@ class S3( object ):
 
             return resp
 
-        except Exception, e:
-            raise S3Error, " {verb} {uri} out={e}".format(
-                            verb = verb,
-                            uri = uri,
-                            e = repr( e ), )
+        except httplib.HTTPException, e:
+
+            raise
+            #raise S3HTTPError, " {verb} {uri} out={e}".format(
+            #                verb = verb,
+            #                uri = uri,
+            #                e = repr( e ), )
 
 
     def _requst_put( self, verb, uri, fn ):
@@ -561,12 +546,20 @@ class S3( object ):
 
             return resp
 
-        except Exception, e:
-            raise S3Error, " {verb} {uri} fn={fn} out={e}".format(
-                            verb = verb,
-                            uri = uri,
-                            fn = fn,
-                            e = repr( e ), )
+        except httplib.HTTPException, e:
+
+            raise
+            #raise S3HTTPError, " {verb} {uri} fn={fn} out={e}".format(
+            #                verb = verb,
+            #                uri = uri,
+            #                fn = fn,
+            #                e = repr( e ), )
+        except IOError:
+            raise
+
+        except:
+            raise
+
         finally:
             f.close()
 
@@ -583,49 +576,37 @@ class S3( object ):
                                                 timeout = self.timeout )
         except httplib.HTTPException, e:
 
-            raise S3Error, "Connect %s:%s out='%s'" % \
-                    ( self.domain, self.port, repr( e ), )
+            raise
+            #raise S3HTTPError, "Connect %s:%s %s" % \
+            #        ( self.domain, self.port, repr( e ), )
 
         return h
 
 
-    def _signature( self, verb, key = None ):
+
+    def _step_extra( self ):
 
         extra = self.extra
         extra += self.intra_query.pop( None, '' )
+
+        return extra
+
+    def _step_qs( self ):
 
         query_string = {}
         query_string.update( self.intra_query )
         query_string.update( self.query_string )
 
-        requst_header = {}
-        requst_header.update( self.intra_header )
-        requst_header.update( self.requst_header )
-
-        #key = key.encode( 'utf-8' )
-        uri = ''
-
-        key = '/' + key if key is not None else ''
-        if self.vhost:
-            uri = key
-        else:
-            uri = "/" + str( self.project ) + key
-
-        if extra != '?':
-            uri += extra + '&'
-        else:
-            uri += extra
-
         qs = '&'.join( [ '%s=%s' % ( k, v, ) for \
                             k, v in query_string.items() ] )
 
-        uri += qs + '&' if qs != '' else ''
+        return qs + '&' if qs != '' else ''
 
-        if not self.need_auth:
-            return uri.rstrip( '?&' )
+    def _step_rh( self ):
 
-        #rh = dict( [ ( str( k ).lower(), v.encode( 'utf-8' ) ) for \
-        #        k, v in requst_header.items() ] )
+        requst_header = {}
+        requst_header.update( self.intra_header )
+        requst_header.update( self.requst_header )
 
         rh = dict( [ ( str( k ).lower(), str( v ) ) for \
                 k, v in requst_header.items() ] )
@@ -636,15 +617,14 @@ class S3( object ):
                 rh[ 'hash-info' ] = rh[ t ]
                 break
 
-        verb = verb.upper()
-        hashinfo = rh.get( 'hash-info', '' )
-        ct = rh.get( 'content-type', '' )
+        return rh
+
+    def _step_expires( self ):
 
         et = type( self.expires )
         if et in ( types.IntType, types.LongType, types.FloatType ):
             dt = str( int( self.expires ) )
         elif et in types.StringTypes :
-            #dt = self.expires.encode( 'utf-8' )
             dt = str( self.expires )
         elif et == types.NoneType :
             dt = datetime.datetime.utcnow()
@@ -657,19 +637,52 @@ class S3( object ):
         else:
             dt = time.time().__int__() + 30 * 60
 
+        return dt
+
+
+    def _signature( self, verb, key = None ):
+
+        verb = verb.upper()
+        key = ( '/' + key ) if key is not None else ''
+
+        extra = self._step_extra()
+        if self.vhost:
+            uri = key
+        else:
+            uri = "/" + str( self.project ) + key
+
+        if extra != '?':
+            uri += extra + '&'
+        else:
+            uri += extra
+
+        qs = self._step_qs()
+        uri += qs
+
+        if not self.need_auth:
+            return uri.rstrip( '?&' )
+
+        rh = self._step_rh()
+
+        hashinfo = rh.get( 'hash-info', '' )
+        ct = rh.get( 'content-type', '' )
+
         mts = [ k + ':' + v for k, v in rh.items() \
                 if k.startswith( 'x-sina-' ) or \
                     k.startswith( 'x-amz-' ) ]
         mts.sort()
 
+        dt = self._step_expires()
+
         stringtosign = '\n'.join( [ verb, hashinfo, ct, dt ] + mts + [ uri.rstrip( '?&' ) ] )
-        ssig = hmac.new( self.secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
+        ssig = hmac.new( self.secretkey, stringtosign, hashlib.sha1 ).digest().encode( 'base64' )
 
         uri += "&".join( [  "KID=" + self.nation.lower() + "," + self.accesskey,
                             "Expires=" + dt,
                             "ssig=" + urllib.quote_plus( ssig[5:15] ), ] )
 
         return uri.rstrip( '?&' )
+
 
 
 if __name__ == '__main__':
