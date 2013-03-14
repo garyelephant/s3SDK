@@ -35,7 +35,11 @@ class S3ResponseError( S3Error ): pass
 
 class S3( object ):
 
-    """ python SDK for Sina Storage Service """
+    """
+    python SDK for Sina Storage Service
+    SVN : svn checkout http://sinastorage-clients.googlecode.com/svn/trunk/ sinastorage-clients-read-only
+    Original Docs: http://sinastorage.sinaapp.com/developer/interface/aws/operate_object.html
+    """
 
     DEFAULT_DOMAIN = 'sinastorage.com'
     DEFAULT_UP_DOMAIN = 'up.sinastorage.com'
@@ -498,6 +502,10 @@ class S3( object ):
         header.update( self.intra_header )
         header.update( self.requst_header )
 
+        for k in header:
+            if type( header[ k ] ) == types.UnicodeType:
+                header[ k ] = header[ k ].encode( 'utf-8' )
+
         self._purge_intra()
 
         try:
@@ -525,6 +533,10 @@ class S3( object ):
         header = {}
         header.update( self.intra_header )
         header.update( self.requst_header )
+
+        for k in header:
+            if type( header[ k ] ) == types.UnicodeType:
+                header[ k ] = header[ k ].encode( 'utf-8' )
 
         self._purge_intra()
 
@@ -597,8 +609,9 @@ class S3( object ):
         query_string.update( self.intra_query )
         query_string.update( self.query_string )
 
-        qs = '&'.join( [ '%s=%s' % ( k, v, ) for \
-                            k, v in query_string.items() ] )
+        qs = [ '%s=%s' % ( k, v ) for k, v in query_string.items() ]
+        qs.sort()
+        qs = '&'.join( qs )
 
         return qs + '&' if qs != '' else ''
 
@@ -608,8 +621,10 @@ class S3( object ):
         requst_header.update( self.intra_header )
         requst_header.update( self.requst_header )
 
-        rh = dict( [ ( str( k ).lower(), str( v ) ) for \
-                k, v in requst_header.items() ] )
+        rh = dict( [ ( k.lower(), v.encode( 'utf-8' ) ) \
+                if type( v ) == types.UnicodeType else \
+                    ( k.lower(), str( v ) )
+                        for k, v in requst_header.items() ] )
 
         for t in ( 's-sina-sha1', 'content-sha1', \
                 's-sina-md5', 'content-md5' ):
