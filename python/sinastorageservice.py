@@ -1,13 +1,16 @@
-
 import os
 import sys
 import stat
 import copy
-import types
 import time
+import types
 import datetime
-import urllib
 
+import re
+import hmac
+import urllib
+import httplib
+import mimetypes
 
 # # compatible with python2.4
 # import hashlib
@@ -23,15 +26,15 @@ except ImportError:
 
     sha1 = Sha1()
 
-import hmac
-import httplib
-import urllib
 
+def ftype( f ):
+    tp = mimetypes.guess_type( f )[ 0 ]
+    return tp or ''
 
 
 def fsize( f ):
-    st = os.fstat( f.fileno() )
-    return st[ stat.ST_SIZE ]
+    return os.path.getsize( f )
+
 
 
 class S3Error( Exception ): pass
@@ -43,18 +46,26 @@ class S3( object ):
 
     DEFAULT_DOMAIN = 'sinastorage.com'
     DEFAULT_UP_DOMAIN = 'up.sinastorage.com'
+
     HTTP_OK = 200
     HTTP_DELETE = 204
 
+    CHUNK = 1024 * 1024
+
+    EXTRAS = [ 'copy' ]
     QUERY_STRINGS = [ 'ip', 'foo' ]
 
-    def __init__( self, accesskey = None, secretkey = None, project = None ):
+    VERB2HTTPCODE = { 'DELETE' : HTTP_DELETE }
 
-        self.accesskey = 'SYS0000000000SANDBOX' if accesskey is None else accesskey
+    def __init__( self, accesskey = None,
+                        secretkey = None,
+                        project = None ):
+
+        self.accesskey = accesskey or 'SYS0000000000SANDBOX'
 
         if len( self.accesskey ) != len( 'SYS0000000000SANDBOX' ) \
                 or '0' not in self.accesskey:
-            raise S3Error, 'accesskey "%s" is illegal.' % self.accesskey
+            raise S3Error, "accesskey '%s' is illegal." % self.accesskey
 
         #UNDO like '0000000000xxxxxxxxxx'
         self.nation = self.accesskey.split( '0' )[0].lower()
@@ -63,8 +74,8 @@ class S3( object ):
         else:
             self.accesskey = self.accesskey.split( '0' )[-1].lower()
 
-        self.secretkey = '1' * 40 if secretkey is None else secretkey
-        self.project = 'sandbox' if project is None else project
+        self.secretkey = secretkey or '1' * 40
+        self.project = project or 'sandbox'
 
         self.purge()
 
@@ -90,14 +101,32 @@ class S3( object ):
 
         self.vhost = False
 
+        self._purge_intra()
 
-    def set_https( self, **ssl ):
-        self.is_ssl = True
-        self.port = 4443
-        self.timeout = 3 * 60
+    def _purge_intra( self ):
 
-        self.ssl_auth['key_file'] = ssl.get( 'key_file', '')
-        self.ssl_auth['cert_file'] = ssl.get( 'cert_file', '')
+        self.intra_query = {}
+        self.intra_header = {}
+
+
+    def set_attr( self, **kwargs ):
+
+        for k in kwargs:
+            fun = getattr( self, 'set_' + k )
+
+            if fun is not None:
+                fun( kwargs[ k ] )
+
+    def set_https( self, ssl = True,
+                         port = 4443,
+                         timeout = 180,
+                         **kwargs ):
+        self.is_ssl = ssl
+        self.port = port
+        self.timeout = timeout
+
+        self.ssl_auth['key_file'] = kwargs.get( 'key_file', '')
+        self.ssl_auth['cert_file'] = kwargs.get( 'cert_file', '')
 
     def set_domain( self, domain ):
         self.domain = domain
@@ -112,17 +141,22 @@ class S3( object ):
         self.expires = expires
 
     def set_expires_delta( self, delta ):
-        self.expires = time.time().__init__() + int( delta )
+        self.expires = time.time().__int__() + int( delta )
 
-    def set_extra( self, extra ):
-        self.extra = extra
+    #def set_extra( self, extra = '?' ):
+    #    self.extra = extra
 
     def set_need_auth( self, auth = True ):
         self.need_auth = auth
 
     def set_vhost( self, vhost = True ):
+
+        if vhost:
+            self.domain = self.project
+        else:
+            self.domain = self.DEFAULT_DOMAIN
+
         self.vhost = bool( vhost )
-        self.domain = str( self.project )
 
     def set_query_string( self, **kwargs ):
 
@@ -135,7 +169,8 @@ class S3( object ):
             self.requst_header[ k ] = v
 
 
-    # large file upload step:
+
+    # large file upload steps:
     # 1. get upload idc : get a domain to hold during uploading a file
     # 2. get upload id  : get a uploadid to bind during uploading parts
     # 3. upload part    : upload a part
@@ -144,315 +179,456 @@ class S3( object ):
 
     def get_upload_idc( self ):
 
+        func = "get_upload_idc error='{error}'"
+
         self.set_domain( self.up_domain )
 
-        try:
-            h = self._http_handle()
-            h.putrequest( 'GET', '/?extra&op=domain.json' )
-            h.endheaders()
-            resp = h.getresponse()
+        verb = 'GET'
+        uri = '/?extra&op=domain.json'
 
-            if resp.status == self.HTTP_OK:
-                return True, resp.read().strip().strip( '"' )
-            else:
-                return False, resp
+        tf, out = self._normal_return( func, verb, uri, out = True )
 
-        except Exception, e:
-            raise S3Error, " Get upload idc error : '%s' " % \
-                    ( repr( e ), )
+        if not tf:
+            return tf, out
 
-    def get_upload_id( self, key ):
+        domain = out.strip().strip( '"' )
 
-        if self.domain == self.DEFAULT_DOMAIN:
-            self.set_domain( self.up_domain )
+        return True, domain
 
-        self.extra = '?uploads'
 
-        args = self.uploadquery( 'POST', key )
-        uri = args[ 0 ]
+    def get_upload_id( self, key, ct = None ):
 
-        try:
-            h = self._http_handle()
-            h.putrequest( 'POST', uri )
-            h.endheaders()
-            resp = h.getresponse()
-
-            if resp.status != self.HTTP_OK:
-                return False, resp
-
-            data = resp.read()
-
-            import re
-
-            r = re.compile( '<UploadId>(.{32})</UploadId>' )
-            r = r.search( data )
-
-            if r:
-                return True, r.groups()[0]
-            else:
-                raise S3Error, " '%s' get uploadid failed. '%s'" % \
-                        ( key, data, )
-
-        except Exception, e:
-            raise S3Error, " '%s' get uploadid error : '%s'" % \
-                            ( key, repr( e ), )
-
-    def upload_part( self, key, uploadid, partnum, partfile ):
+        func = "get_upload_id error='{error}'"
 
         if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
 
-        flen = os.path.getsize( partfile )
+        self.intra_query[ None ] = 'uploads'
+        self.intra_header[ 'Content-Type' ] = str( ct or '' )
 
-        self.extra = '?partNumber=%s&uploadId=%s' % \
-                ( str( partnum ), str( uploadid ), )
+        verb = 'POST'
+        uri = self._signature(  verb, key )
 
-        #self.set_query_string(  partNumber = str( partnum ),
-        #                        uploadId = str( uploadid ) )
+        tf, out = self._normal_return( func, verb, uri, out = True )
 
-        args = self.uploadquery( 'PUT', key )
-        uri = args[ 0 ]
+        if not tf:
+            return tf, out
 
-        f = open( partfile, 'rb' )
-        try:
-            h = self._http_handle()
-            h.putrequest( 'PUT', uri )
-            h.putheader( "Content-Length", str( flen ) )
-            h.endheaders()
+        out = out.strip()
+        out = out.replace( '\n', '' ).replace( '\r', '' )
 
-            while True:
-                data = f.read( 1024 * 1024 )
-                if data == '':
-                    break
-                h.send( data )
+        r = re.compile( '<UploadId>(.{32})</UploadId>' )
+        r = r.search( out )
 
-            resp = h.getresponse()
+        if r:
+            return True, r.groups()[0]
+        else:
+            return False, func.format( error = \
+                "key={key} out={info}'".format( key = key, info = out ), )
 
-            return resp.status == self.HTTP_OK, resp
 
-        except Exception, e:
-            raise S3Error, " '%s' upload part '%s:%s', error : '%s'" % \
-                            ( key, uploadid, str( partnum ), repr( e ), )
+    def get_list_parts( self, key, uploadid ):
 
-        finally:
-            f.close()
-
-    def list_parts( self, key, uploadid ):
+        func = "get_list_parts error='{error}'"
 
         if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
 
-        self.extra = '?uploadId=%s' % ( uploadid, )
+        self.intra_query[ 'uploadId' ] = str( uploadid )
 
-        # self.set_query_string( uploadId = uploadid )
+        verb = 'GET'
+        uri = self._signature( verb, key )
 
-        args = self.downloadquery( 'GET', key )
+        tf, out = self._normal_return( func, verb, uri, out = True )
 
-        uri = args[ 0 ]
+        if not tf:
+            return tf, out
 
-        try:
-            h = self._http_handle()
-            h.putrequest( 'GET', uri )
-            h.endheaders()
+        out = out.strip()
 
-            resp = h.getresponse()
+        tr = re.compile( '<IsTruncated>(True|False)</IsTruncated>' )
+        tr = tr.search( out )
 
-            if resp.status != self.HTTP_OK:
-                return False, resp
+        if tr and tr.groups()[0] == 'True':
+            tr = True
+        else:
+            tr = False
 
-            data = resp.read().strip()
+        pr = re.compile( '<PartNumber>([0-9]*)</PartNumber>' )
+        pr = pr.findall( out )
 
-            import re
+        if pr:
+            pr = [ int( i ) for i in pr ]
+            pr.sort()
+        else:
+            tr = True
+            pr = []
 
-            tr = re.compile( '<IsTruncated>(True|False)</IsTruncated>' )
-            tr = tr.search( data )
+        return True, pr[ : ]
+        #return True, ( tr, pr[ : ] )
 
-            if tr and tr.groups()[0] == 'True':
-                tr = True
-            else:
-                tr = False
 
-            pr = re.compile( '<PartNumber>([0-9]*)</PartNumber>' )
-            pr = pr.findall( data )
+    def upload_part( self, key, uploadid, partnum, partfile, ct = None, cl = None ):
 
-            if pr:
-                pr = [ int( i ) for i in pr ]
-                pr.sort()
-            else:
-                tr = True
-                pr = []
-
-            return True, pr
-            #return True, ( tr, pr[ : ] )
-
-        except Exception, e:
-            raise S3Error, " '%s' list parts, uploadid '%s', error : '%s'" % \
-                            ( key, uploadid, repr( e ), )
-
-    def merge_parts( self, key, uploadid, mergefile ):
+        func = "upload_part error='{error}'"
 
         if self.domain == self.DEFAULT_DOMAIN:
             self.set_domain( self.up_domain )
 
-        flen = os.path.getsize( mergefile )
+        self.intra_query[ 'uploadId' ] = str( uploadid )
+        self.intra_query[ 'partNumber' ] = str( partnum )
 
-        self.extra = '?uploadId=%s' % ( uploadid, )
+        self.intra_header[ 'Content-Type' ] = str( ct or ftype( partfile ) )
+        self.intra_header[ 'Content-Length' ] = str( cl or fsize( partfile ) )
 
-        #self.set_query_string( uploadId = uploadid )
+        verb = 'PUT'
+        uri = self._signature( verb, key )
 
-        args = self.uploadquery( 'POST', key )
-
-        uri = args[ 0 ]
-
-        f = open( mergefile, 'rb' )
-        try:
-            h = self._http_handle()
-            h.putrequest( 'POST', uri )
-            h.putheader( "Content-Length", str( flen ) )
-            h.endheaders()
-
-            while True:
-                data = f.read( 1024 * 1024 )
-                if data == '':
-                    break
-                h.send( data )
-
-            resp = h.getresponse()
-
-            return resp.status == self.HTTP_OK, resp
-
-        except Exception, e:
-            raise S3Error, " '%s' merge file, uplodid '%s', error : '%s'" % \
-                            ( key, uploadid, repr( e ), )
-
-        finally:
-            f.close()
+        return self._normal_return( func, verb, uri, infile = partfile )
 
 
-    def upload( self, key, fn ):
+    def merge_parts( self, key, uploadid, mergefile, ct = None, cl = None ):
 
-        resp = self._put( key, fn )
+        func = "merge_parts error='{error}'"
 
-        return resp.status == self.HTTP_OK, resp
+        if self.domain == self.DEFAULT_DOMAIN:
+            self.set_domain( self.up_domain )
+
+        self.intra_query[ 'uploadId' ] = str( uploadid )
+
+        self.intra_header[ 'Content-Type' ] = str( ct or ftype( mergefile ) )
+        self.intra_header[ 'Content-Length' ] = str( cl or fsize( mergefile ) )
+
+        verb = 'POST'
+        uri = self._signature( verb, key )
+
+        return self._normal_return( func, verb, uri, infile = mergefile )
 
 
-    def download( self, key ):
 
-        return self.getFile( key )
+    def upload_file( self, key, fn ):
+
+        func = "upload_file error='{error}'"
+
+        self.intra_header[ 'Content-Type' ] = str( ftype( fn ) )
+        self.intra_header[ 'Content-Length' ] = str( fsize( fn ) )
+
+        verb = 'PUT'
+        uri = self._signature( verb, key )
+
+        return self._normal_return( func, verb, uri, infile = fn )
 
 
-    def getFile( self, key ):
+    def upload_file_relax( self, key, fsha1, flen ):
 
-        args = self.downloadquery( key )
+        func = "upload_file_relax error='{error}'"
 
-        uri = args[ 0 ]
+        self.intra_query[ None ] = 'relax'
 
-        try:
-            h = self._http_handle()
-            h.putrequest( 'GET', uri )
-            h.endheaders()
+        self.intra_header[ 'Content-Length' ] = str( 0 )
+        self.intra_header[ 's-sina-sha1' ] = str( fsha1 )
+        self.intra_header[ 's-sina-length' ] = str( flen )
 
-            resp = h.getresponse()
+        verb = 'PUT'
+        uri = self._signature( verb, key )
 
-            if resp.status == self.HTTP_OK:
-                return True, resp.read()
-            else:
-                return False, resp
+        return self._normal_return( func, verb, uri )
 
-        except Exception, e:
-            raise S3Error, "getfile '%s' error : '%s'" % \
-                        ( key, repr( e ), )
 
-    def getFileUrl( self, key ):
+    def copy_file( self, key, src, project = None ):
 
-        args = self.downloadquery( key )
+        func = "copy_file error='{error}'"
 
-        uri = args[ 0 ]
+        prj = str( project or self.project )
 
-        return True, 'http://%s%s' % \
-                    ( self.DEFAULT_DOMAIN, uri )
+        self.intra_query[ None ] = 'copy'
 
-    def _put( self, key, fn ):
+        self.intra_header[ 'Content-Length' ] = str( 0 )
+        self.intra_header[ 'x-amz-copy-source' ] = "/%s/%s" % ( prj, src, )
 
-        flen = os.path.getsize( fn )
+        verb = 'PUT'
+        uri = self._signature( verb, key )
 
-        #args = self.uploadquery( 'PUT', key )
+        return self._normal_return( func, verb, uri )
 
-        uri = self._signature( 'PUT', key )
+
+    def copy_file_from_project( self, key, src, project ):
+
+        return self.copy_file( key, src, project )
+
+
+    def get_file( self, key ):
+
+        func = "get_file error='{error}'"
+
+        verb = 'GET'
+        uri = self._signature( verb, key )
+
+        return self._normal_return( func, verb, uri, out = True )
+
+    def get_file_url( self, key ):
+
+        func = "get_file_url error='{error}'"
+
+        verb = 'GET'
+        uri = self._signature( verb, key )
+
+        if self.vhost:
+            url = '{domain}:{port}/{key}'.format(
+                    domain = self.project,
+                    port = self.port,
+                    key = key, )
+        else:
+            url = '{domain}:{port}/{project}/{key}'.format(
+                    domain = self.domain,
+                    port = self.port,
+                    project = self.project,
+                    key = key, )
+
+        return True, url
+
+    def get_file_meta( self, key ):
+
+        func = "get_file_meta error='{error}'"
+
+        self.intra_query[ None ] = 'meta'
+
+        verb = 'GET'
+        uri = self._signature( verb, key )
+
+        return self._normal_return( func, verb, uri, out = True )
+
+
+    def get_list( self ):
+
+        func = "get_list error='{error}'"
+
+        self.intra_query[ 'formatter' ] = 'json'
+
+        verb = 'GET'
+        uri = self._signature( verb )
         print uri
+
+        return self._normal_return( func, verb, uri, out = True )
+
+
+    def list_files( self, prefix = None,
+                          marker = None,
+                          maxkeys = None,
+                          delimiter = None ):
+
+        func = "list_files error='{error}'"
+
+        self.intra_query[ 'formatter' ] = 'json'
+        self.intra_query[ 'prefix' ] = str( prefix or '' )
+        self.intra_query[ 'marker' ] = str( marker or '' )
+        self.intra_query[ 'max-keys' ] = str( maxkeys or 10 )
+        self.intra_query[ 'delimiter' ] = str( delimiter or '' )
+
+        verb = 'GET'
+        uri = self._signature( verb )
+        print uri
+
+        return self._normal_return( func, verb, uri, out = True )
+
+
+    def update_meta( self, key, meta = None ):
+
+        func = "update_meta error='{error}'"
+
+        meta = ( meta or {} ).copy()
+
+        self.intra_query[ None ] = 'meta'
+
+        self.intra_header[ 'Content-Length' ] = str( 0 )
+
+        for k in meta:
+            if k.lower() in (   'content-md5',
+                                'content-type',
+                                'content-length',
+                                'content-sha1',
+                                ):
+                continue
+
+            self.intra_header[ k ] = str( meta[ k ] )
+
+        verb = 'PUT'
+        uri = self._signature( verb, key )
+
+        return self._normal_return( func, verb, uri )
+
+
+    def delete_file( self, key ):
+
+        func = "delete_file error='{error}'"
+
+        verb = 'DELETE'
+        uri = self._signature( verb, key )
+
+        return self._normal_return( func, verb, uri )
+
+
+    def _normal_return( self, func, verb, uri, infile = None, out = False, httpcode = None ):
+
+        verb = verb.upper()
+
+        code = int( httpcode or self.VERB2HTTPCODE.get( verb, self.HTTP_OK ) )
+
+        try:
+            resp = self._requst( verb, uri ) if infile is None \
+                    else self._requst_put( verb, uri, infile )
+
+            if resp.status != code:
+                return False, func.format( error = self._resp_format( resp ), )
+
+            if out:
+                data = ''
+                while True:
+                    chunk = resp.read( self.CHUNK )
+
+                    if chunk == '':
+                        break
+                    data += chunk
+
+                return True, data
+            else:
+                return True, self._resp_format( resp )
+
+        except Exception, e:
+            return False, func.format( error = repr( e ), )
+
+
+    def _resp_format( self, resp ):
+
+        r = "code={code} reason={reason} out={out}".format(
+                    code = resp.status,
+                    reason = resp.reason,
+                    out = resp.read().strip().replace( '\n', ' ' ).\
+                                        replace( '\r', ' ' ), )
+
+        return r
+
+
+    def _requst( self, verb, uri ):
+
+        header = {}
+        header.update( self.intra_header )
+        header.update( self.requst_header )
+
+        self._purge_intra()
+
+        try:
+            h = self._http_handle()
+            h.putrequest( verb, uri )
+            for k in header:
+                h.putheader( k, header[ k ] )
+            h.endheaders()
+
+            resp = h.getresponse()
+
+            return resp
+
+        except Exception, e:
+            raise S3Error, " {verb} {uri} out={e}".format(
+                            verb = verb,
+                            uri = uri,
+                            e = repr( e ), )
+
+
+    def _requst_put( self, verb, uri, fn ):
+
+        header = {}
+        header.update( self.intra_header )
+        header.update( self.requst_header )
+
+        self._purge_intra()
 
         f = open( fn, 'rb' )
         try:
             h = self._http_handle()
-            h.putrequest( 'PUT', uri )
-            h.putheader( "Content-Length", str( flen ) )
+            h.putrequest( verb, uri )
+            for k in header:
+                h.putheader( k, header[ k ] )
             h.endheaders()
 
             while True:
-                data = f.read( 1024 * 1024 )
+                data = f.read( self.CHUNK )
                 if data == '':
                     break
                 h.send( data )
-            resp = h.getresponse()
-            return resp.status == self.HTTP_OK, resp
 
+            resp = h.getresponse()
+
+            return resp
+
+        except Exception, e:
+            raise S3Error, " {verb} {uri} fn={fn} out={e}".format(
+                            verb = verb,
+                            uri = uri,
+                            fn = fn,
+                            e = repr( e ), )
         finally:
             f.close()
-
-
-    def relax_upload( self, rsha1, rlen ):
-
-        self.extra = '?relax'
-
-        metas = {}
-        metas['s-sina-sha1'] = str( rsha1 )
-        metas['s-sina-length'] = str( rlen )
 
 
     def _http_handle( self ):
 
         try:
             if self.is_ssl:
-                h = httplib.HTTPSConnection(    self.domain, \
-                                                self.port, \
-                                                timeout = self.timeout, \
+                h = httplib.HTTPSConnection(    self.domain, self.port,
+                                                timeout = self.timeout,
                                                 **self.ssl_auth )
             else:
-                h = httplib.HTTPConnection(     self.domain, \
-                                                self.port, \
-                                                timeout = self.timeout, )
+                h = httplib.HTTPConnection(     self.domain, self.port,
+                                                timeout = self.timeout )
         except httplib.HTTPException, e:
 
-            raise S3Error, "Connect '%s:%s' error : '%s' " % \
+            raise S3Error, "Connect %s:%s out='%s'" % \
                     ( self.domain, self.port, repr( e ), )
 
         return h
 
 
-    def _signature( self, verb, key ):
+    def _signature( self, verb, key = None ):
 
-        key = key.encode( 'utf-8' )
+        extra = self.extra
+        extra += self.intra_query.pop( None, '' )
+
+        query_string = {}
+        query_string.update( self.intra_query )
+        query_string.update( self.query_string )
+
+        requst_header = {}
+        requst_header.update( self.intra_header )
+        requst_header.update( self.requst_header )
+
+        #key = key.encode( 'utf-8' )
         uri = ''
 
+        key = '/' + key if key is not None else ''
         if self.vhost:
-            uri = '/' + key
+            uri = key
         else:
-            uri = "/" + str( self.project ) + "/" + key
+            uri = "/" + str( self.project ) + key
 
-        if self.extra != '?':
-            uri += self.extra + '&'
+        if extra != '?':
+            uri += extra + '&'
         else:
-            uri += self.extra
+            uri += extra
 
         qs = '&'.join( [ '%s=%s' % ( k, v, ) for \
-                            k, v in self.query_string.items() ] )
+                            k, v in query_string.items() ] )
+
         uri += qs + '&' if qs != '' else ''
 
         if not self.need_auth:
             return uri.rstrip( '?&' )
 
-        rh = dict( [ ( str( k ).lower(), v.encode( 'utf-8' ) ) for \
-                k, v in self.requst_header.items() ] )
+        #rh = dict( [ ( str( k ).lower(), v.encode( 'utf-8' ) ) for \
+        #        k, v in requst_header.items() ] )
+
+        rh = dict( [ ( str( k ).lower(), str( v ) ) for \
+                k, v in requst_header.items() ] )
 
         for t in ( 's-sina-sha1', 'content-sha1', \
                 's-sina-md5', 'content-md5' ):
@@ -468,7 +644,8 @@ class S3( object ):
         if et in ( types.IntType, types.LongType, types.FloatType ):
             dt = str( int( self.expires ) )
         elif et in types.StringTypes :
-            dt = self.expires.encode( 'utf-8' )
+            #dt = self.expires.encode( 'utf-8' )
+            dt = str( self.expires )
         elif et == types.NoneType :
             dt = datetime.datetime.utcnow()
             dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
@@ -486,8 +663,6 @@ class S3( object ):
         mts.sort()
 
         stringtosign = '\n'.join( [ verb, hashinfo, ct, dt ] + mts + [ uri.rstrip( '?&' ) ] )
-        #print stringtosign
-
         ssig = hmac.new( self.secretkey, stringtosign, sha1 ).digest().encode( 'base64' )
 
         uri += "&".join( [  "KID=" + self.nation.lower() + "," + self.accesskey,
@@ -495,8 +670,6 @@ class S3( object ):
                             "ssig=" + urllib.quote_plus( ssig[5:15] ), ] )
 
         return uri.rstrip( '?&' )
-
-
 
 
 if __name__ == '__main__':
