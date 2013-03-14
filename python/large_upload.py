@@ -85,11 +85,10 @@ if __name__ == '__main__':
     secretkey = conf.secretkey
 
     ffile = os.path.join( pdir, 'bigfile.jpg' )
-    bn = os.path.basename( ffile )
-
-    _md5 = partedfile( ffile, 1024 * 1024 * 1, 'md5' )
-
     print 'upload : ', ffile
+
+    bn = os.path.basename( ffile )
+    _md5 = partedfile( ffile, 1024 * 1024 * 1, 'md5' )
 
     handle = s3.S3( accesskey, secretkey, project )
 
@@ -98,55 +97,49 @@ if __name__ == '__main__':
         _f.write( key )
 
     handle.set_need_auth()
-    tf, resp = handle.get_upload_idc()
-    handle.purge()
+    tf, out = handle.get_upload_idc()
+
     if not tf:
-        print resp.read()
+        print out
         sys.exit( 1 )
     else:
-        domain = resp
+        domain = out
 
-    handle.set_domain( domain )
-
+    print domain
     with open( os.path.join( tmpdir, bn, '.domain' ), 'w' ) as _f:
         _f.write( domain )
 
+    handle.set_domain( domain )
+
     for i in range( 1, 4 ):
-        try:
-            tf, resp = handle.get_upload_id( key )
-            if not tf:
-                print resp.read()
-            else:
-                uploadid = resp
-                break
-        except Exception as e:
-            print e
-            continue
+        tf, out = handle.get_upload_id( key )
+        if not tf:
+            print out
+        else:
+            uploadid = out
+            break
     else:
         sys.exit( 1 )
 
-    print 'uploadId : ', uploadid
     with open( os.path.join( tmpdir, bn, '.uploadid' ), 'w' ) as _f:
         _f.write( uploadid )
-
+    print 'uploadId=' + uploadid
 
     round = 1
     while True:
-        print 'Round %d :' % ( round, )
+        print 'Round %d: ' % ( round, )
         round += 1
         time.sleep( 1 )
 
         partnums = []
-        try:
-            tf, resp = handle.list_parts( key, uploadid )
-            if not tf:
-                print resp.read()
-                continue
-            else:
-                partnums = resp[ : ]
-        except:
+        tf, out = handle.list_parts( key, uploadid )
+        if not tf:
+            print out
             continue
+        else:
+            partnums = out
 
+        print partnums
         parts = os.listdir( os.path.join( tmpdir, bn ) )
         parts = [ k for k in parts if not k.startswith( '.' ) ]
         parts.sort( key = lambda x : int( x.split( '.' )[0] ), reverse = False )
@@ -161,21 +154,21 @@ if __name__ == '__main__':
             num, p_md5 = part.split( '.' )
 
             for i in range( 1, 4 ):
-                tf, resp = handle.upload_part( key, uploadid, num, os.path.join( tmpdir, bn, part ) )
+                tf, out = handle.upload_part( key, uploadid, num, os.path.join( tmpdir, bn, part ) )
 
                 if tf:
                     print 'try %d: upload %s ok' % ( i, part )
                     break
                 else:
-                    print 'try %d: upload %s error %s' % ( i, part, str( resp.read() ) )
+                    print 'try %d: upload %s error %s' % ( i, part, str( out ) )
             else:
                 pass
 
-    tf, resp = handle.merge_parts( key, uploadid, os.path.join( tmpdir, bn, '.merge.xml' ) )
+    tf, out = handle.merge_parts( key, uploadid, os.path.join( tmpdir, bn, '.merge.xml' ) )
 
     if tf:
         print 'merger %s OK' % ( key, )
     else:
-        print resp.read()
+        print out
 
 
