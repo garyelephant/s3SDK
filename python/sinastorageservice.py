@@ -49,7 +49,9 @@ class S3( object ):
     EXTRAS = [ 'copy', ]
     QUERY_STRINGS = [ 'ip', 'foo', ]
     REQUST_HEADER = [ 'x-sina-info', 'x-sina-info-int',  ]
-    QUERY_EXTEND = [ 'formatter', 'urlencode', 'rd', 'fn', 'Cheese', ]
+    QUERY_EXTEND = [ 'formatter', 'urlencode', 'rd', 'fn', 'Cheese',
+                     'delimiter', 'marker', 'max-keys', 'prefix',
+                     ]
 
     VERB2HTTPCODE = { 'DELETE' : httplib.NO_CONTENT }
 
@@ -397,7 +399,6 @@ class S3( object ):
 
         verb = 'GET'
         uri = self._signature( verb )
-        print uri
 
         return self._normal_return( func, verb, uri, out = True )
 
@@ -409,16 +410,14 @@ class S3( object ):
 
         func = "list_files error='{error}'"
 
-        self.intra_query[ 'prefix' ] = str( prefix or '' )
-        self.intra_query[ 'marker' ] = str( marker or '' )
-        self.intra_query[ 'max-keys' ] = str( maxkeys or 10 )
-        self.intra_query[ 'delimiter' ] = str( delimiter or '' )
-
         self.intra_query_extend[ 'formatter' ] = 'json'
+        self.intra_query_extend[ 'prefix' ] = str( prefix or '' )
+        self.intra_query_extend[ 'marker' ] = str( marker or '' )
+        self.intra_query_extend[ 'max-keys' ] = str( maxkeys or 10 )
+        self.intra_query_extend[ 'delimiter' ] = str( delimiter or '' )
 
         verb = 'GET'
         uri = self._signature( verb )
-        print uri
 
         return self._normal_return( func, verb, uri, out = True )
 
