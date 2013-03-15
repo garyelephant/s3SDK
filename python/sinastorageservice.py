@@ -674,6 +674,23 @@ class S3( object ):
 
         return qs + '&' if qs != '' else ''
 
+    def _fix_requst_header( self, verb = 'GET' ):
+
+        fix_key = [ 's-sina-sha1',
+                    'content-sha1',
+                    's-sina-md5',
+                    'content-md5',
+                    'content-type', ]
+
+        for d in [ self.intra_header, self.requst_header ]:
+            for k in d.keys():
+                kk = k.lower()
+                if kk in fix_key or \
+                    kk.startswith( 'x-sina-' ) or \
+                    kk.startswith( 'x-amz-' ):
+
+                    del d[ k ]
+
     def _signature( self, verb, key = None ):
 
         verb = verb.upper()
@@ -709,6 +726,13 @@ class S3( object ):
                 if k.startswith( 'x-sina-' ) or \
                     k.startswith( 'x-amz-' ) ]
         mts.sort()
+
+        if verb == 'GET':
+            hashinfo = ''
+            ct = ''
+            mts = []
+
+            self._fix_requst_header( verb )
 
         dt = self._step_expires()
 
