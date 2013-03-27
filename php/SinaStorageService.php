@@ -33,9 +33,9 @@ class SinaStorageService extends SinaService
 	 * @var array of objects
 	 */
 	static $objects_pool;
-
-        public $result_info;
-
+	
+	public $result_info;
+	
 	private $project;
 	private $access_key;
 	private $secret_key;
@@ -55,9 +55,9 @@ class SinaStorageService extends SinaService
 	 * Case sensitive.
 	 */
 	private $extra = "?";
-        private $extra_array = array("copy", "acl", "location", "logging",
-             "relax", "meta", "torrent", "uploadID", "ip", "uploads",
-             "partNumber");
+	private $extra_array = array("copy", "acl", "location", "logging",
+								"relax", "meta", "torrent", "uploadID", "ip", "uploads",
+								"partNumber");
 	
 	/**
 	 * Set query strings
@@ -92,7 +92,7 @@ class SinaStorageService extends SinaService
 	 */
 	protected $curlopts = array();
 	
-
+	
 	/**
 	 * Constructor
 	 */
@@ -128,7 +128,7 @@ class SinaStorageService extends SinaService
 		}
 		return self::$objects_pool[$key] = new self($project, $access_key, $secret_key);
 	}
-
+	
 	
 	/**
 	 * Upload file.
@@ -141,9 +141,9 @@ class SinaStorageService extends SinaService
 	 * @return bool
 	 */
 	public function uploadFile($dest_name, $file_content, $file_size, $file_mimetype, &$result = NULL){
-        if( self::$domain == "http://sinastorage.com/" ){
-            self::$domain = "http://sinastorage.com/";
-        }
+		if( self::$domain == "http://sinastorage.com/" ){
+				self::$domain = "http://sinastorage.com/";
+		}
 		$url = self::$domain . $this->project . "/" . $dest_name;
 		$this->request_headers['Content-Length'] = $file_size;
 		$this->request_headers['Content-Type'] = $file_mimetype;
@@ -151,7 +151,7 @@ class SinaStorageService extends SinaService
 			CURLOPT_POSTFIELDS	=>	$file_content,
 			CURLOPT_HEADER		=>	1,
 		));
-                return $this->doCURL($url, "PUT", &$result);
+		return $this->doCURL($url, "PUT", &$result);
 	}
 	
 	/**
@@ -177,7 +177,7 @@ class SinaStorageService extends SinaService
 		$this->setCURLOPTs(array(
 			CURLOPT_HEADER		=>	1,
 		));
-                return $this->doCURL($url, "PUT", &$result);
+		return $this->doCURL($url, "PUT", &$result);
 	}
 	
 	/**
@@ -200,32 +200,32 @@ class SinaStorageService extends SinaService
 		$this->setCURLOPTs(array(
 			CURLOPT_HEADER		=>	1,
 		));
-                return $this->doCURL($url, "PUT", &$result);
+		return $this->doCURL($url, "PUT", &$result);
 	}
-
-       /** 
-         * Copy file between two projects.
-         * 
-         * Original docs(UTF-8) from SinaStorage:
-         * REST型COPY，不上传具体的文件内容。而是通过COPY方式对系统内另一文件进行复制。
-         * 
-         * @param string $dest_name  Destination file name.
-         * @param string $src_proj  SrcProject path.
-         * @param string $src_name  Srcfile path.
-         * @param string &$result  If failure, you may need check this out for reasons. 
-         */
-        public function copyFileBetweenProject($dest_name, $src_proj, $src_name, &$result = NULL){
-                $url = self::$domain . $this->project . "/" . $dest_name;
-                if($this->extra == "?"){
-                        $this->setExtra("?copy");
-                }
-                $this->request_headers['Content-Length'] = 0;
-                $this->request_headers['x-amz-copy-source'] = "/" . $src_proj . "/" . $src_name;
-                $this->setCURLOPTs(array(
-                        CURLOPT_HEADER          =>      1,
-                ));
-                return $this->doCURL($url, "PUT", &$result);
-        }   
+	
+	/** 
+	 * Copy file between two projects. 
+	 * 
+	 * Original docs(UTF-8) from SinaStorage:
+	 * REST型COPY，不上传具体的文件内容。而是通过COPY方式对系统内另一文件进行复制。
+	 * 
+	 * @param string $dest_name  Destination file name.
+	 * @param string $src_proj  SrcProject path.
+	 * @param string $src_name  Srcfile path.
+	 * @param string &$result  If failure, you may need check this out for reasons. 
+	 */
+	public function copyFileBetweenProject($dest_name, $src_proj, $src_name, &$result = NULL){
+		$url = self::$domain . $this->project . "/" . $dest_name;
+		if($this->extra == "?"){
+			$this->setExtra("?copy");
+		}
+		$this->request_headers['Content-Length'] = 0;
+		$this->request_headers['x-amz-copy-source'] = "/" . $src_proj . "/" . $src_name;
+		$this->setCURLOPTs(array(
+				CURLOPT_HEADER		=>	1;
+		));
+		return $this->doCURL($url, "PUT", &$result);
+	}
 	
 	/**
 	 * Get file from SinaStorage.
@@ -236,7 +236,7 @@ class SinaStorageService extends SinaService
 	 */
 	public function getFile($dest_name, &$result){
 		$url = self::$domain . $this->project . "/" . $dest_name;
-                return $this->doCURL($url, "GET", &$result);
+		return $this->doCURL($url, "GET", &$result);
 	}
 	
 	/**
@@ -263,13 +263,13 @@ class SinaStorageService extends SinaService
 	 */
 	public function deleteFile($dest_name, &$result = NULL){
 		$url = self::$domain . $this->project . "/" . $dest_name;
-                return $this->doCURL($url, "DELETE", &$result, self::HTTP_STATUS_NO_CONTENT);
-        }
-
+		return $this->doCURL($url, "DELETE", &$result, self::HTTP_STATUS_NO_CONTENT);
+	}
+	
 	public function getMeta($dest_name, &$result){
 		$url = self::$domain . $this->project . "/" . $dest_name;
 		$this->setExtra("?meta");
-                return $this->doCURL($url, "GET", &$result);
+		return $this->doCURL($url, "GET", &$result);
 	}
 	
 	/**
@@ -285,7 +285,7 @@ class SinaStorageService extends SinaService
 		if($this->extra == "?"){
 			$this->setExtra("?meta");
 		}
-                return $this->doCURL($url, "PUT", &$result);
+		return $this->doCURL($url, "PUT", &$result);
 	}
 	
 	/**
@@ -297,9 +297,9 @@ class SinaStorageService extends SinaService
 	public function getFileList(&$result){
 		$url = self::$domain . $this->project . "/";
 		if($this->extra == "?"){
-			$this->setExtra("?formatter=json");                   
-		} 
-                return $this->doCURL($url, "GET", &$result);
+			$this->setExtra("?formatter=json");
+		}
+		return $this->doCURL($url, "GET", &$result);
 	}
 
     /**
