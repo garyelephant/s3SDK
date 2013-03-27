@@ -102,7 +102,7 @@ def upload_large( key, fn = None ):
 
     for i in range( 1, 4 ):
         try:
-            uploadid = handle.get_upload_id( key )
+            uploadid = handle.get_upload_id( key, 'image/jpeg' )
             break
         except Exception, e:
             print 'get uploadid : ', e
@@ -165,10 +165,10 @@ def upload_large( key, fn = None ):
 
         threadpool.join()
 
-        time.sleep( 60 )
+        time.sleep( 3 )
 
 
-    time.sleep( 10 )
+    time.sleep( 5 )
     for i in range( 1, 4 ):
         try:
             out = handle.merge_parts( key, uploadid, os.path.join( partdir, bn, '.merge.xml' ) )
@@ -177,7 +177,7 @@ def upload_large( key, fn = None ):
 
             break
         except Exception, e:
-            time.sleep( 2 )
+            time.sleep( 3 )
             print 'try %d: merge : %s' % ( i, repr( e ) )
     else:
         print 'merger %s failed.' % ( key, )

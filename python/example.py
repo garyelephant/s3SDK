@@ -28,11 +28,6 @@ def _set( h ):
 
     h.set_need_auth( True )
 
-    h.set_https(  ssl = True,
-                  port = 4443,
-                  timeout = 180,
-                  key_file = '/data0/S3monitor/pyclient/ssl/client.key',
-                  cert_file = '/data0/S3monitor/pyclient/ssl/client.crt' )
     return
 
     h.set_domain( 'sinastorage.com' )
@@ -53,13 +48,18 @@ def _set( h ):
     h.set_requst_header( {  'Content-Length' : '2013',
                             'Content-Type' : 'text/plain',
                             'Content-Disposition' : 'attachment; filename="ramanujan.txt"',
-                            }  )
+                            } )
+
+    h.set_query_extend( {   'formatter' : 'json',
+                            'fn' : 'rename.txt',
+                            'rd' : '404.html',
+                            } )
 
     h.set_https(  ssl = True,
                   port = 4443,
                   timeout = 180,
-                  key_file = '/data0/S3monitor/pyclient/ssl/client.key',
-                  cert_file = '/data0/S3monitor/pyclient/ssl/client.crt' )
+                  key_file = 'somewhere',
+                  cert_file = 'somewhere', )
 
     h.reset()
 

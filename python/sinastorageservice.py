@@ -35,15 +35,23 @@ class S3ResponseError( S3Error ): pass
 
 class S3( object ):
 
-    """ python SDK for Sina Storage Service """
+    """
+    python SDK for Sina Storage Service
+    SVN : svn checkout http://sinastorage-clients.googlecode.com/svn/trunk/ sinastorage-clients-read-only
+    Original Docs: http://sinastorage.sinaapp.com/developer/interface/aws/operate_object.html
+    """
 
     DEFAULT_DOMAIN = 'sinastorage.com'
     DEFAULT_UP_DOMAIN = 'up.sinastorage.com'
 
     CHUNK = 1024 * 1024
 
-    EXTRAS = [ 'copy' ]
-    QUERY_STRINGS = [ 'ip', 'foo' ]
+    EXTRAS = [ 'copy', ]
+    QUERY_STRINGS = [ 'ip', 'foo', ]
+    REQUST_HEADER = [ 'x-sina-info', 'x-sina-info-int',  ]
+    QUERY_EXTEND = [ 'formatter', 'urlencode', 'rd', 'fn', 'Cheese',
+                     'delimiter', 'marker', 'max-keys', 'prefix',
+                     ]
 
     VERB2HTTPCODE = { 'DELETE' : httplib.NO_CONTENT }
 
@@ -55,7 +63,8 @@ class S3( object ):
 
         if len( self.accesskey ) != len( 'SYS0000000000SANDBOX' ) \
                 or '0' not in self.accesskey:
-            raise S3Error, "accesskey '%s' is illegal." % ( self.accesskey, )
+            raise S3Error, "accesskey '%s' is illegal." % \
+                    ( self.accesskey, )
 
         self.nation = self.accesskey.split( '0' )[0].lower()
         self.nation = 'sae' if self.nation == '' else self.nation
@@ -84,6 +93,7 @@ class S3( object ):
         self.extra = '?'
         self.query_string = {}
         self.requst_header = {}
+        self.query_extend = {}
 
         self.is_ssl = False
         self.ssl_auth = {}
@@ -92,12 +102,13 @@ class S3( object ):
 
         self.vhost = False
 
-        self._purge_intra()
+        self._reset_intra()
 
-    def _purge_intra( self ):
+    def _reset_intra( self ):
 
         self.intra_query = {}
         self.intra_header = {}
+        self.intra_query_extend = {}
 
 
     def set_attr( self, **kwargs ):
@@ -161,6 +172,10 @@ class S3( object ):
 
         self.requst_header.update( rh or {} )
 
+    def set_query_extend( self, qs = None ):
+
+        self.query_extend.update( qs or {} )
+
 
     # large file upload steps:
     # 1. get upload idc : get a domain to hold during uploading a file
@@ -196,7 +211,7 @@ class S3( object ):
         self.intra_header[ 'Content-Type' ] = str( ct or '' )
 
         verb = 'POST'
-        uri = self._signature(  verb, key )
+        uri = self._get_uri(  verb, key )
 
         out = self._normal_return( func, verb, uri, out = True )
 
@@ -223,7 +238,7 @@ class S3( object ):
         self.intra_query[ 'uploadId' ] = str( uploadid )
 
         verb = 'GET'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         out = self._normal_return( func, verb, uri, out = True )
 
@@ -251,7 +266,8 @@ class S3( object ):
         #return ( tr, pr[ : ] )
 
 
-    def upload_part( self, key, uploadid, partnum, partfile, ct = None, cl = None ):
+    def upload_part( self, key, uploadid, partnum, partfile,
+                            ct = None, cl = None ):
 
         func = "upload_part error='{error}'"
 
@@ -265,12 +281,13 @@ class S3( object ):
         self.intra_header[ 'Content-Length' ] = str( cl or fsize( partfile ) )
 
         verb = 'PUT'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri, infile = partfile )
 
 
-    def merge_parts( self, key, uploadid, mergefile, ct = None, cl = None ):
+    def merge_parts( self, key, uploadid, mergefile,
+                            ct = None, cl = None ):
 
         func = "merge_parts error='{error}'"
 
@@ -283,7 +300,7 @@ class S3( object ):
         self.intra_header[ 'Content-Length' ] = str( cl or fsize( mergefile ) )
 
         verb = 'POST'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri, infile = mergefile )
 
@@ -297,7 +314,7 @@ class S3( object ):
         self.intra_header[ 'Content-Length' ] = str( fsize( fn ) )
 
         verb = 'PUT'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri, infile = fn )
 
@@ -313,7 +330,7 @@ class S3( object ):
         self.intra_header[ 's-sina-length' ] = str( flen )
 
         verb = 'PUT'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri )
 
@@ -330,7 +347,7 @@ class S3( object ):
         self.intra_header[ 'x-amz-copy-source' ] = "/%s/%s" % ( prj, src, )
 
         verb = 'PUT'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri )
 
@@ -345,7 +362,7 @@ class S3( object ):
         func = "get_file error='{error}'"
 
         verb = 'GET'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri, out = True )
 
@@ -355,7 +372,7 @@ class S3( object ):
         func = "get_file_url error='{error}'"
 
         verb = 'GET'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         url = '{domain}:{port}{uri}'.format(
                 domain = self.domain,
@@ -372,7 +389,7 @@ class S3( object ):
         self.intra_query[ None ] = 'meta'
 
         verb = 'GET'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri, out = True )
 
@@ -381,11 +398,10 @@ class S3( object ):
 
         func = "get_list error='{error}'"
 
-        self.intra_query[ None ] = 'formatter=json'
+        self.intra_query_extend[ 'formatter' ] = 'json'
 
         verb = 'GET'
-        uri = self._signature( verb )
-        print uri
+        uri = self._get_uri( verb )
 
         return self._normal_return( func, verb, uri, out = True )
 
@@ -397,15 +413,14 @@ class S3( object ):
 
         func = "list_files error='{error}'"
 
-        self.intra_query[ 'formatter' ] = 'json'
-        self.intra_query[ 'prefix' ] = str( prefix or '' )
-        self.intra_query[ 'marker' ] = str( marker or '' )
-        self.intra_query[ 'max-keys' ] = str( maxkeys or 10 )
-        self.intra_query[ 'delimiter' ] = str( delimiter or '' )
+        self.intra_query_extend[ 'formatter' ] = 'json'
+        self.intra_query_extend[ 'prefix' ] = str( prefix or '' )
+        self.intra_query_extend[ 'marker' ] = str( marker or '' )
+        self.intra_query_extend[ 'max-keys' ] = str( maxkeys or 10 )
+        self.intra_query_extend[ 'delimiter' ] = str( delimiter or '' )
 
         verb = 'GET'
-        uri = self._signature( verb )
-        print uri
+        uri = self._get_uri( verb )
 
         return self._normal_return( func, verb, uri, out = True )
 
@@ -431,7 +446,7 @@ class S3( object ):
             self.intra_header[ k ] = str( meta[ k ] )
 
         verb = 'PUT'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri )
 
@@ -441,7 +456,7 @@ class S3( object ):
         func = "delete_file error='{error}'"
 
         verb = 'DELETE'
-        uri = self._signature( verb, key )
+        uri = self._get_uri( verb, key )
 
         return self._normal_return( func, verb, uri )
 
@@ -461,7 +476,8 @@ class S3( object ):
 
             if resp.status != code:
 
-                raise S3HTTPCodeError, func.format( error = self._resp_format( resp ), )
+                raise S3HTTPCodeError, func.format( \
+                        error = self._resp_format( resp ), )
 
             if out:
                 data = ''
@@ -498,7 +514,11 @@ class S3( object ):
         header.update( self.intra_header )
         header.update( self.requst_header )
 
-        self._purge_intra()
+        for k in header:
+            if type( header[ k ] ) == types.UnicodeType:
+                header[ k ] = header[ k ].encode( 'utf-8' )
+
+        self._reset_intra()
 
         try:
             h = self._http_handle()
@@ -526,15 +546,20 @@ class S3( object ):
         header.update( self.intra_header )
         header.update( self.requst_header )
 
-        self._purge_intra()
+        for k in header:
+            if type( header[ k ] ) == types.UnicodeType:
+                header[ k ] = header[ k ].encode( 'utf-8' )
 
-        f = open( fn, 'rb' )
+        self._reset_intra()
+
         try:
             h = self._http_handle()
             h.putrequest( verb, uri )
             for k in header:
                 h.putheader( k, header[ k ] )
             h.endheaders()
+
+            f = open( fn, 'rb' )
 
             while True:
                 data = f.read( self.CHUNK )
@@ -554,6 +579,8 @@ class S3( object ):
             #                uri = uri,
             #                fn = fn,
             #                e = repr( e ), )
+        except OSError:
+            raise
         except IOError:
             raise
 
@@ -561,7 +588,10 @@ class S3( object ):
             raise
 
         finally:
-            f.close()
+            try:
+                f.close()
+            except:
+                pass
 
 
     def _http_handle( self ):
@@ -597,8 +627,9 @@ class S3( object ):
         query_string.update( self.intra_query )
         query_string.update( self.query_string )
 
-        qs = '&'.join( [ '%s=%s' % ( k, v, ) for \
-                            k, v in query_string.items() ] )
+        qs = [ '%s=%s' % ( k, v ) for k, v in query_string.items() ]
+        qs.sort()
+        qs = '&'.join( qs )
 
         return qs + '&' if qs != '' else ''
 
@@ -608,8 +639,10 @@ class S3( object ):
         requst_header.update( self.intra_header )
         requst_header.update( self.requst_header )
 
-        rh = dict( [ ( str( k ).lower(), str( v ) ) for \
-                k, v in requst_header.items() ] )
+        rh = dict( [ ( k.lower(), v.encode( 'utf-8' ) ) \
+                if type( v ) == types.UnicodeType else \
+                    ( k.lower(), str( v ) )
+                        for k, v in requst_header.items() ] )
 
         for t in ( 's-sina-sha1', 'content-sha1', \
                 's-sina-md5', 'content-md5' ):
@@ -639,18 +672,54 @@ class S3( object ):
 
         return dt
 
+    def _step_qs_extend( self ):
 
-    def _signature( self, verb, key = None ):
+        qs_extend = {}
+        qs_extend.update( self.intra_query_extend )
+        qs_extend.update( self.query_extend )
+
+        qs = [ '%s=%s' % ( k, v ) for k, v in qs_extend.items() ]
+        qs.sort()
+        qs = '&'.join( qs )
+
+        return qs + '&' if qs != '' else ''
+
+    def _fix_requst_header( self, verb = 'GET' ):
+
+        fix_key = [ 's-sina-sha1',
+                    'content-sha1',
+                    's-sina-md5',
+                    'content-md5',
+                    'content-type', ]
+
+        for d in [ self.intra_header, self.requst_header ]:
+            for k in d.keys():
+                kk = k.lower()
+                if kk in fix_key or \
+                    kk.startswith( 'x-sina-' ) or \
+                    kk.startswith( 'x-amz-' ):
+
+                    del d[ k ]
+
+    def _signature( self, strtosign ):
+
+        ssig = hmac.new( self.secretkey, \
+                            strtosign, \
+                            hashlib.sha1 ).digest().encode( 'base64' )
+
+        return ssig
+
+    def _get_uri( self, verb, key = None ):
 
         verb = verb.upper()
-        key = ( '/' + key ) if key is not None else ''
+        key = '/' + ( key or '' )
 
-        extra = self._step_extra()
         if self.vhost:
             uri = key
         else:
             uri = "/" + str( self.project ) + key
 
+        extra = self._step_extra()
         if extra != '?':
             uri += extra + '&'
         else:
@@ -660,6 +729,10 @@ class S3( object ):
         uri += qs
 
         if not self.need_auth:
+
+            qs_ex = self._step_qs_extend()
+            uri += qs_ex
+
             return uri.rstrip( '?&' )
 
         rh = self._step_rh()
@@ -672,10 +745,21 @@ class S3( object ):
                     k.startswith( 'x-amz-' ) ]
         mts.sort()
 
+        if verb == 'GET':
+            hashinfo = ''
+            ct = ''
+            mts = []
+
+            self._fix_requst_header( verb )
+
         dt = self._step_expires()
 
-        stringtosign = '\n'.join( [ verb, hashinfo, ct, dt ] + mts + [ uri.rstrip( '?&' ) ] )
-        ssig = hmac.new( self.secretkey, stringtosign, hashlib.sha1 ).digest().encode( 'base64' )
+        stringtosign = '\n'.join( [ verb, hashinfo, ct, dt ] + \
+                                mts + [ uri.rstrip( '?&' ) ] )
+        ssig = self._signature( stringtosign )
+
+        qs_ex = self._step_qs_extend()
+        uri += qs_ex
 
         uri += "&".join( [  "KID=" + self.nation.lower() + "," + self.accesskey,
                             "Expires=" + dt,
