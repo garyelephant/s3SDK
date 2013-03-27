@@ -47,13 +47,14 @@ class S3( object ):
     CHUNK = 1024 * 1024
 
     EXTRAS = [ 'copy', ]
-    QUERY_STRINGS = [ 'ip', 'foo', ]
+    QUERY_STRING = [ 'ip', 'foo', ]
     REQUST_HEADER = [ 'x-sina-info', 'x-sina-info-int',  ]
     QUERY_EXTEND = [ 'formatter', 'urlencode', 'rd', 'fn', 'Cheese',
                      'delimiter', 'marker', 'max-keys', 'prefix',
                      ]
 
     VERB2HTTPCODE = { 'DELETE' : httplib.NO_CONTENT }
+
 
     def __init__( self, accesskey = None,
                         secretkey = None,
@@ -93,7 +94,7 @@ class S3( object ):
         self.extra = '?'
         self.query_string = {}
         self.requst_header = {}
-        self.query_extend = {}
+        self.query_specific = {}
 
         self.is_ssl = False
         self.ssl_auth = {}
@@ -108,7 +109,7 @@ class S3( object ):
 
         self.intra_query = {}
         self.intra_header = {}
-        self.intra_query_extend = {}
+        self.intra_query_specific = {}
 
 
     def set_attr( self, **kwargs ):
@@ -127,7 +128,8 @@ class S3( object ):
                          port = 4443,
                          timeout = 180,
                          **kwargs ):
-        self.is_ssl = ssl
+
+        self.is_ssl = bool( ssl )
         self.port = port
         self.timeout = timeout
 
@@ -172,9 +174,9 @@ class S3( object ):
 
         self.requst_header.update( rh or {} )
 
-    def set_query_extend( self, qs = None ):
+    def set_query_specific( self, qs = None ):
 
-        self.query_extend.update( qs or {} )
+        self.query_specific.update( qs or {} )
 
 
     # large file upload steps:
@@ -194,7 +196,6 @@ class S3( object ):
         uri = '/?extra&op=domain.json'
 
         out = self._normal_return( func, verb, uri, out = True )
-
         domain = out.strip().strip( '"' )
 
         return domain
@@ -241,7 +242,6 @@ class S3( object ):
         uri = self._get_uri( verb, key )
 
         out = self._normal_return( func, verb, uri, out = True )
-
         out = out.strip()
 
         tr = re.compile( '<IsTruncated>(True|False)</IsTruncated>' )
@@ -394,11 +394,11 @@ class S3( object ):
         return self._normal_return( func, verb, uri, out = True )
 
 
-    def get_list( self ):
+    def get_project_list( self ):
 
-        func = "get_list error='{error}'"
+        func = "get_project_list error='{error}'"
 
-        self.intra_query_extend[ 'formatter' ] = 'json'
+        self.intra_query_specific[ 'formatter' ] = 'json'
 
         verb = 'GET'
         uri = self._get_uri( verb )
@@ -406,18 +406,18 @@ class S3( object ):
         return self._normal_return( func, verb, uri, out = True )
 
 
-    def list_files( self, prefix = None,
+    def get_files_list( self, prefix = None,
                           marker = None,
                           maxkeys = None,
                           delimiter = None ):
 
-        func = "list_files error='{error}'"
+        func = "get_files_list error='{error}'"
 
-        self.intra_query_extend[ 'formatter' ] = 'json'
-        self.intra_query_extend[ 'prefix' ] = str( prefix or '' )
-        self.intra_query_extend[ 'marker' ] = str( marker or '' )
-        self.intra_query_extend[ 'max-keys' ] = str( maxkeys or 10 )
-        self.intra_query_extend[ 'delimiter' ] = str( delimiter or '' )
+        self.intra_query_specific[ 'formatter' ] = 'json'
+        self.intra_query_specific[ 'prefix' ] = str( prefix or '' )
+        self.intra_query_specific[ 'marker' ] = str( marker or '' )
+        self.intra_query_specific[ 'max-keys' ] = str( maxkeys or 10 )
+        self.intra_query_specific[ 'delimiter' ] = str( delimiter or '' )
 
         verb = 'GET'
         uri = self._get_uri( verb )
@@ -425,14 +425,13 @@ class S3( object ):
         return self._normal_return( func, verb, uri, out = True )
 
 
-    def update_meta( self, key, meta = None ):
+    def update_file_meta( self, key, meta = None ):
 
-        func = "update_meta error='{error}'"
+        func = "update_file_meta error='{error}'"
 
         meta = ( meta or {} ).copy()
 
         self.intra_query[ None ] = 'meta'
-
         self.intra_header[ 'Content-Length' ] = str( 0 )
 
         for k in meta:
@@ -461,18 +460,20 @@ class S3( object ):
         return self._normal_return( func, verb, uri )
 
 
+
     def _normal_return( self, func, verb, uri,
-                    infile = None,
-                    out = False,
-                    httpcode = None ):
+                            infile = None,
+                            out = False,
+                            httpcode = None ):
 
         verb = verb.upper()
-        code = int( httpcode or self.VERB2HTTPCODE.get( verb, httplib.OK ) )
+        code = int( httpcode or \
+                self.VERB2HTTPCODE.get( verb, httplib.OK ) )
 
         try:
             resp = self._requst( verb, uri ) \
                     if infile is None \
-                    else self._requst_put( verb, uri, infile )
+                    else self._requst_put_file( verb, uri, infile )
 
             if resp.status != code:
 
@@ -540,7 +541,7 @@ class S3( object ):
             #                e = repr( e ), )
 
 
-    def _requst_put( self, verb, uri, fn ):
+    def _requst_put_file( self, verb, uri, fn ):
 
         header = {}
         header.update( self.intra_header )
@@ -581,6 +582,7 @@ class S3( object ):
             #                e = repr( e ), )
         except OSError:
             raise
+
         except IOError:
             raise
 
@@ -614,14 +616,14 @@ class S3( object ):
 
 
 
-    def _step_extra( self ):
+    def _generate_extra( self ):
 
         extra = self.extra
         extra += self.intra_query.pop( None, '' )
 
         return extra
 
-    def _step_qs( self ):
+    def _generate_query_string( self ):
 
         query_string = {}
         query_string.update( self.intra_query )
@@ -633,7 +635,7 @@ class S3( object ):
 
         return qs + '&' if qs != '' else ''
 
-    def _step_rh( self ):
+    def _generate_requst_header( self ):
 
         requst_header = {}
         requst_header.update( self.intra_header )
@@ -652,7 +654,7 @@ class S3( object ):
 
         return rh
 
-    def _step_expires( self ):
+    def _generate_expires( self ):
 
         et = type( self.expires )
         if et in ( types.IntType, types.LongType, types.FloatType ):
@@ -672,13 +674,13 @@ class S3( object ):
 
         return dt
 
-    def _step_qs_extend( self ):
+    def _generate_query_string_specific( self ):
 
-        qs_extend = {}
-        qs_extend.update( self.intra_query_extend )
-        qs_extend.update( self.query_extend )
+        qs_specific = {}
+        qs_specific.update( self.intra_query_specific )
+        qs_specific.update( self.query_specific )
 
-        qs = [ '%s=%s' % ( k, v ) for k, v in qs_extend.items() ]
+        qs = [ '%s=%s' % ( k, v ) for k, v in qs_specific.items() ]
         qs.sort()
         qs = '&'.join( qs )
 
@@ -719,23 +721,23 @@ class S3( object ):
         else:
             uri = "/" + str( self.project ) + key
 
-        extra = self._step_extra()
+        extra = self._generate_extra()
         if extra != '?':
             uri += extra + '&'
         else:
             uri += extra
 
-        qs = self._step_qs()
+        qs = self._generate_query_string()
         uri += qs
 
         if not self.need_auth:
 
-            qs_ex = self._step_qs_extend()
+            qs_ex = self._generate_query_string_specific()
             uri += qs_ex
 
             return uri.rstrip( '?&' )
 
-        rh = self._step_rh()
+        rh = self._generate_requst_header()
 
         hashinfo = rh.get( 'hash-info', '' )
         ct = rh.get( 'content-type', '' )
@@ -752,13 +754,13 @@ class S3( object ):
 
             self._fix_requst_header( verb )
 
-        dt = self._step_expires()
+        dt = self._generate_expires()
 
         stringtosign = '\n'.join( [ verb, hashinfo, ct, dt ] + \
                                 mts + [ uri.rstrip( '?&' ) ] )
         ssig = self._signature( stringtosign )
 
-        qs_ex = self._step_qs_extend()
+        qs_ex = self._generate_query_string_specific()
         uri += qs_ex
 
         uri += "&".join( [  "KID=" + self.nation.lower() + "," + self.accesskey,
