@@ -92,13 +92,14 @@ def upload_large( key, fn = None ):
     with open( os.path.join( partdir, bn, '.key' ), 'w' ) as _f:
         _f.write( key )
 
-    domain = handle.get_upload_idc()
-    print 'domain : ',domain
+    ## large file uploading interface v1
+    #domain = handle.get_upload_idc()
+    #print 'domain : ',domain
 
-    with open( os.path.join( partdir, bn, '.domain' ), 'w' ) as _f:
-        _f.write( domain )
+    #with open( os.path.join( partdir, bn, '.domain' ), 'w' ) as _f:
+    #    _f.write( domain )
 
-    handle.set_domain( domain )
+    #handle.set_domain( domain )
 
     for i in range( 1, 4 ):
         try:
@@ -138,7 +139,9 @@ def upload_large( key, fn = None ):
 
             handle = s3.S3( conf.accesskey, conf.secretkey, conf.project )
             handle.set_need_auth()
-            handle.set_domain( domain )
+
+            ## large file uploading interface v1
+            #handle.set_domain( domain )
 
             for i in range( 1, 4 ):
                 try:

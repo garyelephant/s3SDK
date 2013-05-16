@@ -598,6 +598,9 @@ class S3( object ):
 
     def _http_handle( self ):
 
+        httplib.HTTPConnection._http_vsn = 11
+        httplib.HTTPConnection._http_vsn_str = 'HTTP/1.1'
+
         try:
             if self.is_ssl:
                 h = httplib.HTTPSConnection(    self.domain, self.port,
