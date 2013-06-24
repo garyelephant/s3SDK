@@ -3,11 +3,13 @@ import sys
 import stat
 import copy
 import time
+import json
 import types
 import datetime
 
 import re
 import hmac
+import base64
 import hashlib
 import urllib
 import httplib
@@ -17,11 +19,44 @@ import mimetypes
 
 def ftype( f ):
     tp = mimetypes.guess_type( f )[ 0 ]
-    return tp or ''
+    return tp or 'application/octet-stream'
 
 
 def fsize( f ):
     return os.path.getsize( f )
+
+
+def encode_multipart_formdata( fields, files ):
+    """
+    fields is a sequence of (name, value) elements for regular form fields.
+    files is a sequence of (name, filename, value) elements for data to be uploaded as files
+    Return (content_type, body) ready for httplib.HTTP instance
+    """
+
+    BOUNDARY = '$-_-_-_-_$'
+    CRLF = '\r\n'
+
+    L = []
+    for key, value in fields:
+        L.append( '--' + BOUNDARY )
+        L.append( 'Content-Disposition: form-data; name="%s"' % ( key, ) )
+        L.append( '' )
+        L.append( value )
+
+    for key, filename, value in files:
+        L.append( '--' + BOUNDARY )
+        L.append( 'Content-Disposition: form-data; name="%s"; filename="%s"' % \
+                    ( key, filename, ) )
+        L.append( 'Content-Type: %s' % ftype( filename, ) )
+        L.append( '' )
+        L.append( value )
+    L.append( '--' + BOUNDARY + '--' )
+    L.append( '' )
+
+    body = CRLF.join( L )
+    content_type = 'multipart/form-data; boundary=%s' % ( BOUNDARY, )
+
+    return content_type, body
 
 
 
@@ -61,6 +96,7 @@ class S3( object ):
                         project = None ):
 
         self.accesskey = accesskey or 'SYS0000000000SANDBOX'
+        self.ACCESSKEY = accesskey or 'SYS0000000000SANDBOX'
 
         if len( self.accesskey ) != len( 'SYS0000000000SANDBOX' ) \
                 or '0' not in self.accesskey:
@@ -304,6 +340,57 @@ class S3( object ):
 
         return self._normal_return( func, verb, uri, infile = mergefile )
 
+
+
+    def post_file( self, key, fn, headers = None, fields = None ):
+
+        func = "post_file error='{error}'"
+
+        uri = '/'
+        host = self.project + '.sinastorage.com'
+        h = { 'Host' : host }
+        h.update( headers or {} )
+
+        fd = [ ( 'key', key ) ]
+
+        policy, ssig = self._get_signature_policy()
+        fd += [ ( 'AWSAccessKeyId', self.ACCESSKEY ),
+                ( 'Policy', policy ),
+                ( 'Signature', ssig ), ]
+
+        if fields is not None:
+            for k, v in fields.items():
+                fd += [ ( k, v ) ]
+
+        content = ''
+        try:
+            with open( fn, 'rb' ) as fhandle:
+                while True:
+                    data = fhandle.read( self.CHUNK )
+                    if data == '':
+                        break
+                    content += data
+        except OSError:
+            raise
+
+        except IOError:
+            raise
+
+        except:
+            raise
+
+        resp = self._mulitpart_post( uri,
+                                     fields = fd,
+                                     files = [ ( 'file', fn, content ) ],
+                                     headers = h )
+
+        if resp.status not in ( httplib.OK, \
+                                httplib.CREATED, \
+                                httplib.NO_CONTENT ):
+            raise S3HTTPCodeError, func.format( \
+                    error = self._resp_format( resp ), )
+
+        return self._resp_format( resp )
 
 
     def upload_file( self, key, fn ):
@@ -771,6 +858,59 @@ class S3( object ):
                             "ssig=" + urllib.quote_plus( ssig[5:15] ), ] )
 
         return uri.rstrip( '?&' )
+
+
+
+    def _generate_expires_policy( self ):
+
+        fmt = '%Y-%m-%dT%H:%M:%S GMT'
+
+        et = type( self.expires )
+        if et in ( types.IntType, types.LongType, types.FloatType ):
+            dt = time.strftime( fmt, time.localtime( int( self.expires ) ) )
+        elif et == datetime.timedelta :
+            dt = datetime.datetime.utcnow() + self.expires
+            dt = dt.strftime( fmt )
+        elif et == datetime.datetime :
+            dt = dt.strftime( fmt )
+        elif et == types.NoneType :
+            dt = datetime.datetime.utcnow()
+            dt += datetime.timedelta( seconds = 30 * 60 )
+            dt = dt.strftime( fmt )
+        else:
+            dt = time.time().__int__() + 30 * 60
+
+        dt = dt[:-4] + '.000Z'
+
+        return dt
+
+
+    def _get_signature_policy( self ):
+
+        policy = { 'expiration' : self._generate_expires_policy(),
+                   'conditions' : [ { 'bucket' : self.project },
+                                    [ 'starts-with', '$key', '' ] ], }
+
+        policy = base64.b64encode( json.dumps( policy ).encode( 'utf-8' ) )
+        ssig = base64.b64encode( hmac.new( self.secretkey, \
+                                        policy, hashlib.sha1 ).digest() )
+
+        return policy, ssig
+
+
+    def _mulitpart_post( self, uri, fields = [], files = [], headers = None ):
+
+        content_type, body = encode_multipart_formdata( fields, files )
+
+        h = {   'content-type': content_type,
+                'content-length': str( len( body ) ), }
+        h.update( headers or {} )
+
+        conn = self._http_handle()
+        conn.request( 'POST', uri, body, h )
+
+        resp = conn.getresponse()
+        return resp
 
 
 

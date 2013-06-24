@@ -78,6 +78,14 @@ def test_uplaod_file( h ):
         logging.error( "uplaod_file key='{key}' error out='{out}'".format( key = key, out = repr( e ) ) )
 
 
+def test_post_file( h ):
+
+    key = 'test/POST_FILE'
+    fn = os.path.join( tempdir, 'DONOT_README' )
+
+    print h.post_file( key, fn )
+
+
 def test_upload_file_relax( h ):
 
     key = 'relax_upload'
@@ -214,6 +222,7 @@ if __name__ == "__main__":
     handle = s3.S3( conf.accesskey, conf.secretkey, conf.project )
     _set( handle )
 
+    #test_post_file( handle )
     test_uplaod_file( handle )
     #test_upload_file_relax( handle )
     #test_copy_file( handle )
