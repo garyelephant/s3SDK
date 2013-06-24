@@ -33,7 +33,7 @@ def encode_multipart_formdata( fields, files ):
     Return (content_type, body) ready for httplib.HTTP instance
     """
 
-    BOUNDARY = '$-_-_-_-_$'
+    BOUNDARY = '---------------------------this_boundary$'
     CRLF = '\r\n'
 
     L = []
@@ -83,7 +83,7 @@ class S3( object ):
 
     EXTRAS = [ 'copy', ]
     QUERY_STRING = [ 'ip', 'foo', ]
-    REQUST_HEADER = [ 'x-sina-info', 'x-sina-info-int',  ]
+    REQUST_HEADER = [ 'x-sina-info', 'x-sina-info-int', ]
     QUERY_EXTEND = [ 'formatter', 'urlencode', 'rd', 'fn', 'Cheese',
                      'delimiter', 'marker', 'max-keys', 'prefix',
                      ]
@@ -169,8 +169,8 @@ class S3( object ):
         self.port = port
         self.timeout = timeout
 
-        self.ssl_auth['key_file'] = kwargs.get( 'key_file', '')
-        self.ssl_auth['cert_file'] = kwargs.get( 'cert_file', '')
+        self.ssl_auth['key_file'] = kwargs.get( 'key_file', '' )
+        self.ssl_auth['cert_file'] = kwargs.get( 'cert_file', '' )
 
     def set_domain( self, domain ):
         self.domain = domain
