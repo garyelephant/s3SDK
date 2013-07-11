@@ -152,6 +152,7 @@ public class sinastorageservice{
     }
 
     protected String getFileType( String fn ) {
+
         FileNameMap fNameMap = URLConnection.getFileNameMap();
 
         String type = fNameMap.getContentTypeFor( fn );
@@ -554,7 +555,7 @@ public class sinastorageservice{
 
         boolean res = this.checkHttpcode( urlconn, verb );
         if (!res) {
-            return new ByteArrayOutputStream();
+            return null;
         }
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -590,6 +591,7 @@ public class sinastorageservice{
     }
 
     private String generateQueryString() {
+
         Map<String, String> qs = new HashMap<String, String>();
 
         qs.putAll( this.intra_query );
@@ -600,10 +602,12 @@ public class sinastorageservice{
         for (String k : qs.keySet()) {
             qsstr += k + "=" + qs.get( k ) + "&";
         }
+
         return qsstr;
     }
 
     private String generateQueryStringSpecific() {
+
         Map<String, String> qs = new HashMap<String, String>();
 
         qs.putAll( this.intra_query_specific );
@@ -614,10 +618,12 @@ public class sinastorageservice{
         for (String k : qs.keySet()) {
             qsstr += k + "=" + qs.get( k ) + "&";
         }
+
         return qsstr;
     }
 
     private Map<String, String> generateRequstHeader() {
+
         Map<String, String> rh = new HashMap<String, String>();
 
         rh.put( "hash-info", "" );
@@ -670,12 +676,16 @@ public class sinastorageservice{
         fixHeader.add( "content-type" );
 
         for (String k : this.intra_header.keySet()) {
-            if (fixHeader.contains( k )) {
+            if (fixHeader.contains( k.toLowerCase() )
+                    || k.toLowerCase().startsWith( "x-sina-" )
+                    || k.toLowerCase().startsWith( "x-amz-" )) {
                 this.intra_header.remove( k );
             }
         }
         for (String k : this.query_string.keySet()) {
-            if (fixHeader.contains( k )) {
+            if (fixHeader.contains( k.toLowerCase() )
+                    || k.toLowerCase().startsWith( "x-sina-" )
+                    || k.toLowerCase().startsWith( "x-amz-" )) {
                 this.query_string.remove( k );
             }
         }
@@ -732,7 +742,7 @@ public class sinastorageservice{
             stringtosignbuf += headerToSign.get( i ) + "\n";
         }
         stringtosignbuf += this.rstrip( this.rstrip( uri, '&' ), '?' );
-        System.out.println( stringtosignbuf );
+
         String ssig = this.generateSsig( stringtosignbuf );
 
         uri += this.generateQueryStringSpecific();
