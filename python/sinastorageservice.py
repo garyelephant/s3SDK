@@ -88,6 +88,8 @@ class S3( object ):
                      'delimiter', 'marker', 'max-keys', 'prefix',
                      ]
 
+    QUERY_SIGNATURE_KEY = [ 'ip', 'uploadID', 'partNumber' ]
+
     VERB2HTTPCODE = { 'DELETE' : httplib.NO_CONTENT }
 
 
@@ -204,7 +206,13 @@ class S3( object ):
 
     def set_query_string( self, qs = None ):
 
-        self.query_string.update( qs or {} )
+        d = qs or {}
+
+        for k in d:
+            if k in self.QUERY_SIGNATURE_KEY:
+                self.query_string[ k ] = d[ k ]
+            else:
+                self.query_specific[ k ] = d[ k ]
 
     def set_requst_header( self, rh = None ):
 

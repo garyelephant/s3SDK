@@ -9,6 +9,7 @@ __version__ = '0.1.0'
 
 import os
 import sys
+import time
 import logging
 
 import conf
@@ -41,7 +42,7 @@ def _set( h ):
 
     h.set_vhost( False )
 
-    h.set_query_string( {   'ip' : '1363392928,7.7.7.7',
+    h.set_query_string( {   'ip' : str( time.time().__int__() + 24 * 3600 ) + ',7.7.7.7',
                             'foo' : 'bar',
                             } )
 
