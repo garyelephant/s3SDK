@@ -33,7 +33,7 @@ def encode_multipart_formdata( fields, files ):
     Return (content_type, body) ready for httplib.HTTP instance
     """
 
-    BOUNDARY = '$-_-_-_-_$'
+    BOUNDARY = '---------------------------this_boundary$'
     CRLF = '\r\n'
 
     L = []
@@ -83,10 +83,12 @@ class S3( object ):
 
     EXTRAS = [ 'copy', ]
     QUERY_STRING = [ 'ip', 'foo', ]
-    REQUST_HEADER = [ 'x-sina-info', 'x-sina-info-int',  ]
+    REQUST_HEADER = [ 'x-sina-info', 'x-sina-info-int', ]
     QUERY_EXTEND = [ 'formatter', 'urlencode', 'rd', 'fn', 'Cheese',
                      'delimiter', 'marker', 'max-keys', 'prefix',
                      ]
+
+    QUERY_SIGNATURE_KEY = [ 'ip', 'uploadID', 'partNumber' ]
 
     VERB2HTTPCODE = { 'DELETE' : httplib.NO_CONTENT }
 
@@ -169,8 +171,8 @@ class S3( object ):
         self.port = port
         self.timeout = timeout
 
-        self.ssl_auth['key_file'] = kwargs.get( 'key_file', '')
-        self.ssl_auth['cert_file'] = kwargs.get( 'cert_file', '')
+        self.ssl_auth['key_file'] = kwargs.get( 'key_file', '' )
+        self.ssl_auth['cert_file'] = kwargs.get( 'cert_file', '' )
 
     def set_domain( self, domain ):
         self.domain = domain
@@ -204,7 +206,13 @@ class S3( object ):
 
     def set_query_string( self, qs = None ):
 
-        self.query_string.update( qs or {} )
+        d = qs or {}
+
+        for k in d:
+            if k in self.QUERY_SIGNATURE_KEY:
+                self.query_string[ k ] = d[ k ]
+            else:
+                self.query_specific[ k ] = d[ k ]
 
     def set_requst_header( self, rh = None ):
 
