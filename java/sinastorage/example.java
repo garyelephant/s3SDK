@@ -5,6 +5,9 @@ import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+
 import sinastorage.sinastorageservice;
 
 public class example{
@@ -36,6 +39,7 @@ public class example{
     }
 
     public void testPutFileRelax() {
+
         try {
             boolean upload = this.s3.putFileRelax( "java_sdk_putfilerelax.jpg",
                     "9a1dda270ba97d5ae16ddf76fcf35cc320f8b0f7", 80725 );
@@ -50,6 +54,7 @@ public class example{
     }
 
     public void testCopeFile() {
+
         try {
             boolean upload = this.s3.copyFile( "java_sdk_copyfile.jpg",
                     "java_sdk_putfilerelax.jpg" );
@@ -65,7 +70,8 @@ public class example{
     public void testGetGile() {
 
         try {
-            ByteArrayOutputStream out = this.s3.getFile( "DONOT_README" );
+            ByteArrayOutputStream out = this.s3
+                    .getFile( "java_sdk_putfile.txt" );
 
             System.out.println( out.toString() );
 
@@ -138,25 +144,65 @@ public class example{
         }
     }
 
+    private void setInstance() {
+
+        /*
+         * When you upload a file, you must set setNeed_auth( true ). When you
+         * download a file or do other action,you can set setNeed_auth( false )
+         * if your project is public. You can setHttps with certificate. You can
+         * setVhost( true ), if your project is CNAME to SinaStorage or
+         * SinaEdge. You can set Host, Port, Timeout, Expires(default is 20 * 60
+         * seconds). You can set QueryString, RequstHeader.
+         */
+        this.s3.reset();
+        this.s3.setNeed_auth( true );
+
+        // try {
+        // this.s3.setHttps();
+        // } catch (KeyManagementException e) {
+        // e.printStackTrace();
+        // } catch (NoSuchAlgorithmException e) {
+        // e.printStackTrace();
+        // }
+
+        // this.s3.setVhost( true );
+        // this.s3.setHost( "sinastorage.com" );
+        // this.s3.setUphost( "up.sinastorage.com" );
+        // this.s3.setPort( 80 );
+        // this.s3.setTimeout( 30 );
+        // this.s3.setExpires( 20 * 60 );
+
+        // Map<String, String> queryString = new HashMap<String, String>();
+        // queryString.put( "ip", (24 * 3600 + System.currentTimeMillis() /
+        // 1000) + ",1.1.1.1" );
+        // queryString.put( "fn", "fn.txt" );
+        // queryString.put( "rd", "1.txt" );
+        // queryString.put( "foo", "bar" );
+        // this.s3.setQuery_string( queryString );
+
+        // Map<String, String> requstHeader = new HashMap<String, String>();
+        // requstHeader.put( "Content-Disposition",
+        // "attachment; filename=\"ramanujan.txt\"" );
+        // this.s3.setRequst_header( requstHeader );
+    }
+
     public static void main( String[] args ) throws Exception {
 
         example test = new example();
-
-        test.s3.setNeed_auth( true );
-        // test.s3.setVhost( true );
-        // test.s3.setHttps( "" );
+        test.setInstance();
 
         // test.testPutFile();
         // test.testPutFileRelax();
         // test.testCopeFile();
+
         // test.testGetGile();
         // test.testGetFileUrl();
         // test.testGetFileMeta();
+
         // test.testGetProjectList();
         // test.testGetFilesList();
+
         // test.testUpdateFileMeta();
         // test.testDeleteFile();
-
     }
-
 }

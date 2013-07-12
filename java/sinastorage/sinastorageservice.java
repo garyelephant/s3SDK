@@ -18,7 +18,17 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.net.HttpURLConnection;
+
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
+
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
@@ -53,7 +63,6 @@ public class sinastorageservice{
     private boolean vhost = false;
 
     private boolean is_ssl = false;
-    private String ssl_auth = "";
 
     private String extra = "?";
 
@@ -114,8 +123,7 @@ public class sinastorageservice{
         this.setNeed_auth( false );
         this.setVhost( false );
 
-        this.setIs_ssl( false );
-        this.setSsl_auth( "" );
+        this.is_ssl = false;
 
         this.setExtra( "?" );
 
@@ -460,6 +468,7 @@ public class sinastorageservice{
 
         HttpURLConnection urlconn;
         if (this.is_ssl) {
+
             urlconn = (HttpsURLConnection) url.openConnection();
         } else {
             urlconn = (HttpURLConnection) url.openConnection();
@@ -819,28 +828,57 @@ public class sinastorageservice{
     /*
      * Set https
      */
+    public void setHttps() throws KeyManagementException,
+            NoSuchAlgorithmException {
 
-    public void setHttps( String ssl_auth ) {
-        this.ssl_auth = ssl_auth;
+        TrustManager[] trustAllCerts = new TrustManager[] { new X509TrustManager(){
+            public X509Certificate[] getAcceptedIssuers() {
+                return null;
+            }
+
+            public void checkClientTrusted( X509Certificate[] certs,
+                    String authType ) {
+            }
+
+            public void checkServerTrusted( X509Certificate[] certs,
+                    String authType ) {
+            }
+        } };
+
+        SSLContext sc = SSLContext.getInstance( "SSL" );
+        sc.init( null, trustAllCerts, new java.security.SecureRandom() );
+        HttpsURLConnection.setDefaultSSLSocketFactory( sc.getSocketFactory() );
+
+        HostnameVerifier allHostsValid = new HostnameVerifier(){
+            public boolean verify( String hostname, SSLSession session ) {
+                return true;
+            }
+        };
+
+        HttpsURLConnection.setDefaultHostnameVerifier( allHostsValid );
+
         this.is_ssl = true;
         this.port = 443;
         this.protocol = "https";
     }
 
-    public void setHttps( String ssl_auth, int port ) {
-        this.setHttps( ssl_auth );
+    public void setHttps( int port ) throws KeyManagementException,
+            NoSuchAlgorithmException {
+
+        this.setHttps();
         this.port = port;
     }
 
-    public void setHttps( String ssl_auth, int port, int timeout ) {
-        this.setHttps( ssl_auth, port );
+    public void setHttps( int port, int timeout )
+            throws KeyManagementException, NoSuchAlgorithmException {
+
+        this.setHttps( port );
         this.timeout = timeout;
     }
 
     /*
      * Get And Set Private Attribute
      */
-
     public String getProtocol() {
         return protocol;
     }
@@ -914,18 +952,6 @@ public class sinastorageservice{
         return is_ssl;
     }
 
-    public void setIs_ssl( boolean is_ssl ) {
-        this.is_ssl = is_ssl;
-    }
-
-    public String getSsl_auth() {
-        return ssl_auth;
-    }
-
-    public void setSsl_auth( String ssl_auth ) {
-        this.ssl_auth = ssl_auth;
-    }
-
     public String getExtra() {
         return extra;
     }
@@ -939,8 +965,18 @@ public class sinastorageservice{
     }
 
     public void setQuery_string( Map<String, String> query_string ) {
+
+        ArrayList<String> signature = new ArrayList<String>();
+        signature.add( "uploadID" );
+        signature.add( "partNumber" );
+        signature.add( "ip" );
+
         for (String k : query_string.keySet()) {
-            this.query_string.put( k, query_string.get( k ) );
+            if (signature.contains( k )) {
+                this.query_string.put( k, query_string.get( k ) );
+            } else {
+                this.query_specific.put( k, query_string.get( k ) );
+            }
         }
     }
 
