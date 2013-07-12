@@ -8,15 +8,15 @@ import java.util.Map;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 
-import sinastorage.sinastorageservice;
+import sinastorage.SinaStorageService;
 
-public class example{
+public class Example{
 
-    private String accesskey = "SYS0000000000SANDBOX";
-    private String secretkey = "1111111111111111111111111111111111111111";
-    private String project = "sandbox";
+    private final static String accesskey = "SYS0000000000SANDBOX";
+    private final static String secretkey = "1111111111111111111111111111111111111111";
+    private final static String project = "sandbox";
 
-    private sinastorageservice s3 = new sinastorageservice( accesskey,
+    private final SinaStorageService s3 = new SinaStorageService( accesskey,
             secretkey, project );
 
     public void testPutFile() {
@@ -188,7 +188,7 @@ public class example{
 
     public static void main( String[] args ) throws Exception {
 
-        example test = new example();
+        Example test = new Example();
         test.setInstance();
 
         // test.testPutFile();

@@ -38,7 +38,7 @@ import sun.misc.BASE64Encoder;
 
 import sinastorage.S3Exception;
 
-public class sinastorageservice{
+public class SinaStorageService{
 
     private final static int CHUNK = 64 * 1024;
     private final static String HOST = "sinastorage.com";
@@ -52,8 +52,8 @@ public class sinastorageservice{
     private String accessuser;
 
     private String protocol = "http";
-    private String host = sinastorageservice.HOST;
-    private String up_host = sinastorageservice.UPHOST;
+    private String host = SinaStorageService.HOST;
+    private String up_host = SinaStorageService.UPHOST;
     private int port = 80;
 
     private int timeout = 60;
@@ -76,13 +76,13 @@ public class sinastorageservice{
 
     protected Map<String, Integer> verb_to_code = new HashMap<String, Integer>();
 
-    public sinastorageservice() {
+    public SinaStorageService() {
 
         this.splitAccesskey( this.accesskey );
         this.reset();
     }
 
-    public sinastorageservice(String accesskey, String secretkey, String project) {
+    public SinaStorageService(String accesskey, String secretkey, String project) {
 
         this.accesskey = accesskey;
         this.secretkey = secretkey;
@@ -113,8 +113,8 @@ public class sinastorageservice{
     public void reset() {
 
         this.setProtocol( "http" );
-        this.setHost( sinastorageservice.HOST );
-        this.setUphost( sinastorageservice.UPHOST );
+        this.setHost( SinaStorageService.HOST );
+        this.setUphost( SinaStorageService.UPHOST );
         this.setPort( 80 );
 
         this.setTimeout( 60 );
@@ -529,7 +529,7 @@ public class sinastorageservice{
 
         OutputStream outputStream = urlconn.getOutputStream();
 
-        byte[] buf = new byte[sinastorageservice.CHUNK];
+        byte[] buf = new byte[SinaStorageService.CHUNK];
         InputStream in = null;
         try {
             in = new FileInputStream( fn );
@@ -568,7 +568,7 @@ public class sinastorageservice{
         }
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[sinastorageservice.CHUNK];
+        byte[] buffer = new byte[SinaStorageService.CHUNK];
 
         InputStream inputStream = urlconn.getInputStream();
 
@@ -944,7 +944,7 @@ public class sinastorageservice{
         if (vhost) {
             this.host = this.project;
         } else {
-            this.host = sinastorageservice.HOST;
+            this.host = SinaStorageService.HOST;
         }
     }
 
