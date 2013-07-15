@@ -1,9 +1,12 @@
 package sinastorage;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -38,7 +41,7 @@ import sun.misc.BASE64Encoder;
 
 import sinastorage.S3Exception;
 
-public class sinastorageservice{
+public class SinaStorageService{
 
     private final static int CHUNK = 64 * 1024;
     private final static String HOST = "sinastorage.com";
@@ -52,8 +55,8 @@ public class sinastorageservice{
     private String accessuser;
 
     private String protocol = "http";
-    private String host = sinastorageservice.HOST;
-    private String up_host = sinastorageservice.UPHOST;
+    private String host = SinaStorageService.HOST;
+    private String up_host = SinaStorageService.UPHOST;
     private int port = 80;
 
     private int timeout = 60;
@@ -76,13 +79,13 @@ public class sinastorageservice{
 
     protected Map<String, Integer> verb_to_code = new HashMap<String, Integer>();
 
-    public sinastorageservice() {
+    public SinaStorageService() {
 
         this.splitAccesskey( this.accesskey );
         this.reset();
     }
 
-    public sinastorageservice(String accesskey, String secretkey, String project) {
+    public SinaStorageService(String accesskey, String secretkey, String project) {
 
         this.accesskey = accesskey;
         this.secretkey = secretkey;
@@ -113,8 +116,8 @@ public class sinastorageservice{
     public void reset() {
 
         this.setProtocol( "http" );
-        this.setHost( sinastorageservice.HOST );
-        this.setUphost( sinastorageservice.UPHOST );
+        this.setHost( SinaStorageService.HOST );
+        this.setUphost( SinaStorageService.UPHOST );
         this.setPort( 80 );
 
         this.setTimeout( 60 );
@@ -436,29 +439,207 @@ public class sinastorageservice{
     /*
      * large file upload by part
      */
+    /**
+     * multipart get upload idc
+     * 
+     * @return String
+     */
+    public String multipartGetUploadIdc() throws Exception {
 
-    public String largeGetUploadIdc() throws Exception {
+        this.setHost( SinaStorageService.UPHOST );
 
-        return "";
+        String verb = "GET";
+        String uri = "/?extra&op=domain.json";
+
+        ByteArrayOutputStream out = this.requstOutput( verb, uri );
+
+        return this.strip( out.toString().trim(), '"' );
     }
 
-    public String largeGetUploadId() throws Exception {
+    /**
+     * multipart get upload id
+     * 
+     * @param key
+     * 
+     * @return String
+     */
+    public String multipartGetUploadId( String key ) throws Exception {
 
-        return "";
+        this.setHost( SinaStorageService.UPHOST );
+
+        this.intra_query.put( null, "uploads" );
+
+        String verb = "POST";
+        String uri = this.getUri( verb, key );
+
+        ByteArrayOutputStream out = this.requstOutput( verb, uri );
+
+        String xml = out.toString();
+
+        Pattern pattern = Pattern.compile( "<UploadId>(.{32})</UploadId>" );
+        Matcher matcher = pattern.matcher( xml );
+
+        String uploadId = null;
+        if (matcher.find()) {
+            uploadId = matcher.group( 1 );
+        } else {
+            throw new S3Exception( "Not Found uploadid, Response : '" + xml
+                    + "'" );
+        }
+
+        return uploadId;
     }
 
-    public int[] largeGetPartsList() throws Exception {
+    /**
+     * multipart get upload id
+     * 
+     * @param key
+     * @param ftype
+     * 
+     * @return String
+     */
+    public String multipartGetUploadId( String key, String ftype )
+            throws Exception {
 
-        int[] parts = new int[10];
-        return parts;
+        this.intra_header.put( "Content-Type", ftype );
+
+        return this.multipartGetUploadId( key );
     }
 
-    public void largePutPart() throws Exception {
+    /**
+     * multipart get parts list
+     * 
+     * @param key
+     * @param uploadid
+     * 
+     * @return int[]
+     */
+    public int[] multipartGetPartsList( String key, String uploadid )
+            throws Exception {
 
+        this.setHost( SinaStorageService.UPHOST );
+
+        this.intra_query.put( "uploadId", uploadid );
+
+        String verb = "GET";
+        String uri = this.getUri( verb, key );
+
+        ByteArrayOutputStream out = this.requstOutput( verb, uri );
+
+        String xml = out.toString();
+
+        Pattern pattern = Pattern.compile( "<PartNumber>([0-9]*)</PartNumber>" );
+        Matcher matcher = pattern.matcher( xml );
+
+        ArrayList<String> parts = new ArrayList<String>();
+        while (matcher.find()) {
+            parts.add( matcher.group( 1 ) );
+        }
+
+        int[] partsList = new int[parts.size()];
+
+        for (int i = 0; i < parts.size(); i++) {
+            partsList[i] = Integer.parseInt( parts.get( i ) );
+        }
+
+        Arrays.sort( partsList );
+
+        return partsList;
     }
 
-    public void largeMergeParts() throws Exception {
+    /**
+     * multipart put part
+     * 
+     * @param key
+     * @param uploadid
+     * @param partnum
+     * @param fn
+     * 
+     * @return boolean
+     */
+    public boolean multipartPutPart( String key, String uploadid, int partnum,
+            String fn ) throws Exception {
 
+        this.setHost( SinaStorageService.UPHOST );
+
+        this.intra_query.put( "uploadId", uploadid );
+        this.intra_query.put( "partNumber", "" + partnum );
+
+        String verb = "PUT";
+        String uri = this.getUri( verb, key );
+
+        return this.requstInput( verb, uri, fn );
+    }
+
+    /**
+     * multipart put part
+     * 
+     * @param key
+     * @param uploadid
+     * @param partnum
+     * @param content
+     * 
+     * @return boolean
+     */
+    public boolean multipartPutPart( String key, String uploadid, int partnum,
+            byte[] content ) throws Exception {
+
+        this.setHost( SinaStorageService.UPHOST );
+
+        this.intra_query.put( "uploadId", uploadid );
+        this.intra_query.put( "partNumber", "" + partnum );
+
+        String verb = "PUT";
+        String uri = this.getUri( verb, key );
+
+        return this.requstInput( verb, uri, content );
+    }
+
+    /**
+     * multipart merge parts
+     * 
+     * @param key
+     * @param uploadid
+     * @param fn
+     * 
+     * @return boolean
+     */
+    public boolean multipartMergeParts( String key, String uploadid, String fn )
+            throws Exception {
+
+        this.setHost( SinaStorageService.UPHOST );
+
+        this.intra_query.put( "uploadId", uploadid );
+
+        String verb = "POST";
+        String uri = this.getUri( verb, key );
+
+        return this.requstInput( verb, uri, fn );
+    }
+
+    /**
+     * multipart merge parts
+     * 
+     * @param key
+     * @param uploadid
+     * @param content
+     * 
+     * @return boolean
+     */
+    public boolean multipartMergeParts( String key, String uploadid,
+            byte[] content ) throws Exception {
+
+        this.setHost( SinaStorageService.UPHOST );
+
+        this.intra_query.put( "uploadId", uploadid );
+
+        this.intra_header.put( "Content-Type", "text/xml" );
+        this.intra_header.put( "Content-Length", "" + content.length );
+
+        String verb = "POST";
+        String uri = this.getUri( verb, key );
+
+        return this.requstInput( verb, uri, content );
     }
 
     private HttpURLConnection getHttpHandle( String verb, String uri )
@@ -468,7 +649,6 @@ public class sinastorageservice{
 
         HttpURLConnection urlconn;
         if (this.is_ssl) {
-
             urlconn = (HttpsURLConnection) url.openConnection();
         } else {
             urlconn = (HttpURLConnection) url.openConnection();
@@ -529,7 +709,7 @@ public class sinastorageservice{
 
         OutputStream outputStream = urlconn.getOutputStream();
 
-        byte[] buf = new byte[sinastorageservice.CHUNK];
+        byte[] buf = new byte[SinaStorageService.CHUNK];
         InputStream in = null;
         try {
             in = new FileInputStream( fn );
@@ -568,7 +748,7 @@ public class sinastorageservice{
         }
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[sinastorageservice.CHUNK];
+        byte[] buffer = new byte[SinaStorageService.CHUNK];
 
         InputStream inputStream = urlconn.getInputStream();
 
@@ -608,8 +788,14 @@ public class sinastorageservice{
 
         String qsstr = "";
 
+        ArrayList<String> keys = new ArrayList<String>();
         for (String k : qs.keySet()) {
-            qsstr += k + "=" + qs.get( k ) + "&";
+            keys.add( k );
+        }
+        Collections.sort( keys );
+
+        for (int i = 0; i < keys.size(); i++) {
+            qsstr += keys.get( i ) + "=" + qs.get( keys.get( i ) ) + "&";
         }
 
         return qsstr;
@@ -944,7 +1130,7 @@ public class sinastorageservice{
         if (vhost) {
             this.host = this.project;
         } else {
-            this.host = sinastorageservice.HOST;
+            this.host = SinaStorageService.HOST;
         }
     }
 
