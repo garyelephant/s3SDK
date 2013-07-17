@@ -19,6 +19,25 @@ public class Example{
     private final SinaStorageService s3 = new SinaStorageService( accesskey,
             secretkey, project );
 
+    public void testPostFile() {
+
+        try {
+            String up = "Somebody looks like your Old Friend.";
+            boolean upload = this.s3.postFile( "java_sdk_postfile.txt",
+                    up.getBytes() );
+
+            System.out.println( upload );
+
+            String filename = "somewhere";
+            boolean upload1 = this.s3.postFile( "java_sdk_postfile1.txt",
+                    filename );
+
+            System.out.println( upload1 );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public void testPutFile() {
 
         try {
@@ -29,8 +48,8 @@ public class Example{
             System.out.println( upload );
 
             String filename = "somewhere";
-            boolean upload1 = this.s3
-                    .putFile( "java_sdk_putfile.txt", filename );
+            boolean upload1 = this.s3.putFile( "java_sdk_putfile1.txt",
+                    filename );
 
             System.out.println( upload1 );
         } catch (Exception e) {
@@ -43,11 +62,12 @@ public class Example{
         try {
             boolean upload = this.s3.putFileRelax( "java_sdk_putfilerelax.jpg",
                     "9a1dda270ba97d5ae16ddf76fcf35cc320f8b0f7", 80725 );
-            // boolean upload = this.s3.putFileRelax(
-            // "java_sdk_putfilerelax.jpg",
-            // "9a1dda270ba97d5ae16ddf76fcf35cc320f8b0f7", 80725, "image/jpeg"
-            // );
             System.out.println( upload );
+            boolean upload1 = this.s3.putFileRelax(
+                    "java_sdk_putfilerelax1.jpg",
+                    "9a1dda270ba97d5ae16ddf76fcf35cc320f8b0f7", 80725,
+                    "image/jpeg" );
+            System.out.println( upload1 );
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -58,10 +78,11 @@ public class Example{
         try {
             boolean upload = this.s3.copyFile( "java_sdk_copyfile.jpg",
                     "java_sdk_putfilerelax.jpg" );
-            // boolean upload = this.s3.copyFileFromProject(
-            // "java_sdk_copyfile.jpg",
-            // "java_sdk_putfilerelax.jpg", "prj" );
             System.out.println( upload );
+            boolean upload1 = this.s3.copyFileFromProject(
+                    "java_sdk_copyfile1.jpg", "java_sdk_putfilerelax.jpg",
+                    "sandbox" );
+            System.out.println( upload1 );
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -156,34 +177,35 @@ public class Example{
          */
         this.s3.reset();
         this.s3.setNeed_auth( true );
+        /*
+        try {
+            this.s3.setHttps();
+        } catch (KeyManagementException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
 
-        // try {
-        // this.s3.setHttps();
-        // } catch (KeyManagementException e) {
-        // e.printStackTrace();
-        // } catch (NoSuchAlgorithmException e) {
-        // e.printStackTrace();
-        // }
+        this.s3.setVhost( true );
+        this.s3.setHost( "sinastorage.com" );
+        this.s3.setUphost( "up.sinastorage.com" );
+        this.s3.setPort( 80 );
+        this.s3.setTimeout( 30 );
+        this.s3.setExpires( 20 * 60 );
 
-        // this.s3.setVhost( true );
-        // this.s3.setHost( "sinastorage.com" );
-        // this.s3.setUphost( "up.sinastorage.com" );
-        // this.s3.setPort( 80 );
-        // this.s3.setTimeout( 30 );
-        // this.s3.setExpires( 20 * 60 );
+        Map<String, String> queryString = new HashMap<String, String>();
+        queryString.put( "ip", (24 * 3600 + System.currentTimeMillis() / 1000)
+                + ",1.1.1.1" );
+        queryString.put( "fn", "fn.txt" );
+        queryString.put( "rd", "1.txt" );
+        queryString.put( "foo", "bar" );
+        this.s3.setQuery_string( queryString );
 
-        // Map<String, String> queryString = new HashMap<String, String>();
-        // queryString.put( "ip", (24 * 3600 + System.currentTimeMillis() /
-        // 1000) + ",1.1.1.1" );
-        // queryString.put( "fn", "fn.txt" );
-        // queryString.put( "rd", "1.txt" );
-        // queryString.put( "foo", "bar" );
-        // this.s3.setQuery_string( queryString );
-
-        // Map<String, String> requstHeader = new HashMap<String, String>();
-        // requstHeader.put( "Content-Disposition",
-        // "attachment; filename=\"ramanujan.txt\"" );
-        // this.s3.setRequst_header( requstHeader );
+        Map<String, String> requstHeader = new HashMap<String, String>();
+        requstHeader.put( "Content-Disposition",
+                "attachment; filename=\"ramanujan.txt\"" );
+        this.s3.setRequst_header( requstHeader );
+        */
     }
 
     public static void main( String[] args ) throws Exception {
@@ -191,7 +213,8 @@ public class Example{
         Example test = new Example();
         test.setInstance();
 
-        // test.testPutFile();
+        // test.testPostFile();
+        test.testPutFile();
         // test.testPutFileRelax();
         // test.testCopeFile();
 

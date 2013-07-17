@@ -1,8 +1,11 @@
 package sinastorage;
 
+import java.text.SimpleDateFormat;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.regex.Matcher;
@@ -169,6 +172,93 @@ public class SinaStorageService{
         String type = fNameMap.getContentTypeFor( fn );
 
         return type == null ? "application/octet-stream" : type;
+    }
+
+    /**
+     * post file with a filename
+     * 
+     * @param key
+     * @param fn
+     * 
+     * @return boolean
+     */
+    public boolean postFile( String key, String fn ) throws Exception {
+
+        long len = this.getFileSize( fn );
+
+        String uri = "/";
+
+        Map<String, String> headers = new HashMap<String, String>();
+
+        if (this.vhost) {
+            headers.put( "Host", this.project );
+        } else {
+            headers.put( "Host", this.project + "." + SinaStorageService.HOST );
+        }
+
+        String[] sign = this.getSignaturePolicy();
+
+        ArrayList<String[]> postFields = new ArrayList<String[]>();
+        postFields.add( new String[] { "key", key } );
+        postFields.add( new String[] { "AWSAccessKeyId", this.accesskey } );
+        postFields.add( new String[] { "Policy", sign[0] } );
+        postFields.add( new String[] { "Signature", sign[1] } );
+        // postFields.add( new String[]{"success_action_status", "201"} );
+
+        byte[] content = new byte[(int) len];
+        InputStream in = null;
+        try {
+            in = new FileInputStream( fn );
+            int size = in.read( content );
+            if (size <= 0) {
+                throw new S3Exception( " Read " + fn + " fail." );
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            if (in != null) {
+                try {
+                    in.close();
+                } catch (IOException e1) {
+                    ;
+                }
+            }
+        }
+
+        return this.mulitpartPost( uri, postFields, headers, fn, content );
+    }
+
+    /**
+     * post file with a byte array
+     * 
+     * @param key
+     * @param content
+     * 
+     * @return boolean
+     */
+    public boolean postFile( String key, byte[] content ) throws Exception {
+
+        String uri = "/";
+
+        Map<String, String> headers = new HashMap<String, String>();
+
+        if (this.vhost) {
+            headers.put( "Host", this.project );
+        } else {
+            headers.put( "Host", this.project + "." + SinaStorageService.HOST );
+        }
+
+        String[] sign = this.getSignaturePolicy();
+
+        ArrayList<String[]> fields = new ArrayList<String[]>();
+        fields.add( new String[] { "key", key } );
+        fields.add( new String[] { "AWSAccessKeyId", this.accesskey } );
+        fields.add( new String[] { "Policy", sign[0] } );
+        fields.add( new String[] { "Signature", sign[1] } );
+        // fields.add( new String[]{"success_action_status", "201"} );
+
+        return this.mulitpartPost( uri, fields, headers, "unknown", content );
     }
 
     /**
@@ -640,6 +730,113 @@ public class SinaStorageService{
         String uri = this.getUri( verb, key );
 
         return this.requstInput( verb, uri, content );
+    }
+
+    private String generateExpiresPolicy() {
+
+        SimpleDateFormat sfmt = new SimpleDateFormat( "yyyy-MM-dd HH:mm:ss" );
+        String dateStr = sfmt.format( new Date( 1000 * (System
+                .currentTimeMillis() / 1000 + this.expires) ) );
+        dateStr += ".000Z";
+        dateStr = dateStr.replace( ' ', 'T' );
+
+        return dateStr;
+    }
+
+    private String[] getSignaturePolicy() throws Exception {
+
+        String[] sign = new String[2];
+
+        String policy = "{\"conditions\": [{\"bucket\": \"" + this.project
+                + "\"}, [\"starts-with\", \"$key\", \"\"]], \"expiration\": \""
+                + this.generateExpiresPolicy() + "\"}";
+
+        policy = new String( policy.getBytes( "UTF-8" ), "UTF-8" );
+        policy = new BASE64Encoder().encode( policy.getBytes() ).trim();
+
+        String policyLine = "";
+
+        // The encoded output stream must be represented in lines of no more
+        // than 76 characters each
+        for (int index = 0; index <= policy.length(); index += 2) {
+            if ((index + 76) > policy.length()) {
+                policyLine += policy.substring( index, policy.length() );
+            } else {
+                policyLine += policy.substring( index, 76 + index );
+            }
+            index += 76;
+        }
+
+        sign[0] = policyLine;
+
+        try {
+            Mac mac = Mac.getInstance( "HmacSHA1" );
+            mac.init( new SecretKeySpec( this.secretkey.getBytes(), "HmacSHA1" ) );
+
+            sign[1] = new BASE64Encoder().encode( mac.doFinal( policyLine
+                    .getBytes() ) );
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+
+        return sign;
+    }
+
+    private boolean mulitpartPost( String uri, ArrayList<String[]> postFields,
+            Map<String, String> headers, String fn, byte[] content )
+            throws Exception {
+
+        String BOUNDARY = "---------------------------this_boundary$";
+        String CRLF = "\r\n";
+        String contentType = "multipart/form-data; boundary=" + BOUNDARY;
+
+        String bodyStart = "";
+
+        for (String[] str : postFields) {
+            bodyStart += "--" + BOUNDARY + CRLF;
+            bodyStart += "Content-Disposition: form-data; name=\"" + str[0]
+                    + "\"" + CRLF;
+            bodyStart += CRLF;
+            bodyStart += str[1] + CRLF;
+        }
+
+        bodyStart += "--" + BOUNDARY + CRLF;
+        bodyStart += "Content-Disposition: form-data; name=\"file\"; filename=\""
+                + fn + "\"" + CRLF;
+        bodyStart += "Content-Type: " + this.getFileType( fn ) + CRLF;
+        bodyStart += CRLF;
+
+        String bodyEnd = CRLF;
+        bodyEnd += "--" + BOUNDARY + "--" + CRLF;
+
+        int len = bodyStart.length() + content.length + bodyEnd.length();
+
+        headers.put( "content-type", contentType );
+        headers.put( "content-length", "" + len );
+
+        HttpURLConnection urlconn = this.getHttpHandle( "POST", uri );
+
+        for (String k : headers.keySet()) {
+            urlconn.setRequestProperty( k, new String( headers.get( k )
+                    .getBytes( "UTF-8" ), "UTF-8" ) );
+        }
+
+        OutputStream outStream = urlconn.getOutputStream();
+        outStream.write( bodyStart.getBytes(), 0, bodyStart.length() );
+        outStream.write( content, 0, content.length );
+        outStream.write( bodyEnd.getBytes(), 0, bodyEnd.length() );
+        outStream.flush();
+
+        int httpcode = urlconn.getResponseCode();
+
+        if (httpcode != HttpURLConnection.HTTP_OK
+                && httpcode != HttpURLConnection.HTTP_CREATED
+                && httpcode != HttpURLConnection.HTTP_NO_CONTENT) {
+            throw new S3Exception( "HTTP Response Code Error : " + httpcode );
+        }
+
+        return true;
     }
 
     private HttpURLConnection getHttpHandle( String verb, String uri )
