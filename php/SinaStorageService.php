@@ -19,6 +19,8 @@ require_once("SinaService.php");
 class SinaStorageService extends SinaService
 {
 	static $domain = "http://sinastorage.com/";
+
+	const UPDOMAIN = "http://up.sinastorage.com/";
 	const HTTP_STATUS_OK = 200;
 	const HTTP_STATUS_NO_CONTENT = 204;
 
@@ -55,9 +57,9 @@ class SinaStorageService extends SinaService
 	 * Case sensitive.
 	 */
 	private $extra = "?";
-	private $extra_array = array("copy", "acl", "location", "logging",
-								"relax", "meta", "torrent", "uploadID", "ip", "uploads",
-								"partNumber");
+	private $extra_array = array("copy", "acl", "location", "logging", "op",
+								"relax", "meta", "torrent", "ip",
+								"uploadId", "uploads", "partNumber");
 	private $kv_extra_array = array("op", "partNumber", "uploadId", "ip");
 
 	/**
@@ -130,6 +132,116 @@ class SinaStorageService extends SinaService
 		return self::$objects_pool[$key] = new self($project, $access_key, $secret_key);
 	}
 
+
+	/**
+	 * get upload idc.
+	 *
+	 * @param string &$result  If failure, you may need check this out for reasons.
+	 * @return bool
+	 */
+	public function getuploadIdc(&$result = NULL){
+		self::$domain = self::UPDOMAIN;
+		$url = self::$domain;
+		$this->setExtra("?extra&op=domain.json");
+		list($result, $result_info) = $this->cURL($url, "GET");
+		return $result_info['http_code'] == self::HTTP_STATUS_OK;
+	}
+
+	/**
+	 * get uploadId.
+	 *
+	 * @param string $dest_name  Destination file name.
+	 * @param string $file_mimetype  File content type.
+	 * @param string &$result  If failure, you may need check this out for reasons.
+	 * @return bool
+	 */
+	public function getuploadId($dest_name, $file_mimetype = NULL, &$result = NULL){
+		self::$domain = self::UPDOMAIN;
+		$url = self::$domain . $this->project . "/" . $dest_name;
+		$this->setExtra("?uploads");
+		if($file_mimetype != NULL){
+			$this->request_headers['Content-Type'] = $file_mimetype;
+		}
+		list($result, $result_info) = $this->cURL($url, "POST");
+		return $result_info['http_code'] == self::HTTP_STATUS_OK;
+	}
+
+	/**
+	 * Upload part.
+	 *
+	 * @param string $dest_name  Destination file name.
+	 * @param string $file_content
+	 * @param int $file_size
+	 * @param string $file_mimetype
+	 * @param string $part_number
+	 * @param string $upload_id  Upload ID
+	 * @param string &$result  If failure, you may need check this out for reasons.
+	 * @return bool
+	 */
+	public function uploadPart($dest_name, $file_content, $file_size, $file_mimetype, $part_number, $upload_id, &$result = NULL){
+		self::$domain = self::UPDOMAIN;
+		$url = self::$domain . $this->project . "/" . $dest_name;
+		$this->setExtra("?");
+		$this->setQueryStrings(array(
+			"partNumber"	=> "$part_number",
+			"uploadId"		=> "$upload_id",
+		));
+		$this->request_headers['Content-Length'] = $file_size;
+		$this->request_headers['Content-Type'] = $file_mimetype;
+		$this->setCURLOPTs(array(
+			CURLOPT_POSTFIELDS	=>	$file_content,
+			CURLOPT_HEADER		=>	1,
+		));
+		list($result, $result_info) = $this->cURL($url, "PUT");
+		return $result_info['http_code'] == self::HTTP_STATUS_OK;
+	}
+
+	/**
+	 * Get upload parts
+	 *
+	 * @param string $dest_name  Destination file name.
+	 * @param string $upload_id Upload ID
+	 * @param string &$result  If failure, you may need check this out for reasons.
+	 * @return bool
+	 */
+	public function getuploadParts($dest_name, $upload_id, &$result = NULL){
+		self::$domain = self::UPDOMAIN;
+		$url = self::$domain . $this->project . "/" . $dest_name;
+		$this->setExtra("?");
+		$this->setQueryStrings(array(
+			"uploadId"		=> "$upload_id",
+		));
+		list($result, $result_info) = $this->cURL($url, "GET");
+		return $result_info['http_code'] == self::HTTP_STATUS_OK;
+	}
+
+	/**
+	 * marge part.
+	 *
+	 * @param string $dest_name  Destination file name.
+	 * @param string $merge_content
+	 * @param int $file_size
+	 * @param string $file_mimetype
+	 * @param string $upload_id
+	 * @param string &$result  If failure, you may need check this out for reasons.
+	 * @return bool
+	 */
+	public function mergeParts($dest_name, $merge_content, $file_size, $file_mimetype, $upload_id, &$result = NULL){
+		self::$domain = self::UPDOMAIN;
+		$url = self::$domain . $this->project . "/" . $dest_name;
+		$this->setExtra("?");
+		$this->setQueryStrings(array(
+			"uploadId"		=> "$upload_id",
+		));
+		$this->request_headers['Content-Length'] = $file_size;
+		$this->request_headers['Content-Type'] = $file_mimetype;
+		$this->setCURLOPTs(array(
+			CURLOPT_POSTFIELDS	=>	$merge_content,
+			CURLOPT_HEADER		=>	1,
+		));
+		list($result, $result_info) = $this->cURL($url, "POST");
+		return $result_info['http_code'] == self::HTTP_STATUS_OK;
+	}
 
 	/**
 	 * Upload file.
