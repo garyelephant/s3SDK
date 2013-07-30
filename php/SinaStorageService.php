@@ -58,6 +58,7 @@ class SinaStorageService extends SinaService
 	private $extra_array = array("copy", "acl", "location", "logging",
 								"relax", "meta", "torrent", "uploadID", "ip", "uploads",
 								"partNumber");
+	private $kv_extra_array = array("op", "partNumber", "uploadId", "ip");
 
 	/**
 	 * Set query strings
@@ -522,7 +523,7 @@ class SinaStorageService extends SinaService
 				$tmp = "";
 				foreach($query_array as $key => $value){
 					//TODO
-					if(in_array($key, array("uploadID","ip"))){
+					if(in_array($key, $this->kv_extra_array)){
 						$tmp .= "&{$key}={$value}";
 					} else {
 						$tmp .= "&{$key}";
@@ -535,6 +536,8 @@ class SinaStorageService extends SinaService
 
 		if (isset($tmp_header['s-sina-sha1'])) {
 			$arrayToSign['Content-MD5'] = $tmp_header['s-sina-sha1'];
+		} elseif (isset($tmp_header['content-sha1'])) {
+			$arrayToSign['Content-MD5'] = $tmp_header['content-sha1'];
 		} elseif (isset($tmp_header['s-sina-md5'])) {
 			$arrayToSign['Content-MD5'] = $tmp_header['s-sina-md5'];
 		} elseif (isset($tmp_header['content-md5'])) {
