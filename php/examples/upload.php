@@ -24,7 +24,7 @@ $file_content = "";
 //$file_handle = fopen( $localfile , "rb");
 $file_handle = fopen( $localfile , "r");
 while (!feof($file_handle)) {
-    $file_content = $file_content.fread($file_handle,81);
+    $file_content = $file_content.fread($file_handle,20480);
 }
 fclose($file_handle);
 
