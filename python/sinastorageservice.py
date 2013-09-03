@@ -756,21 +756,18 @@ class S3( object ):
 
         et = type( self.expires )
         if et in ( types.IntType, types.LongType, types.FloatType ):
-            dt = str( int( self.expires ) )
+            dt = int( self.expires )
         elif et in types.StringTypes :
-            dt = str( self.expires )
-        elif et == types.NoneType :
-            dt = datetime.datetime.utcnow()
-            dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
+            dt = self.expires
+        elif et == datetime.datetime :
+            dt = dt.strftime( '%s' )
         elif et == datetime.timedelta :
             dt = datetime.datetime.utcnow() + self.expires
-            dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
-        elif et == datetime.datetime :
-            dt = dt.strftime( '%a, %d %b %Y %H:%M:%S +0000' )
+            dt = dt.strftime( '%s' )
         else:
             dt = time.time().__int__() + 30 * 60
 
-        return dt
+        return str( dt )
 
     def _generate_query_string_specific( self ):
 
@@ -887,6 +884,7 @@ class S3( object ):
             dt = dt.strftime( fmt )
         else:
             dt = time.time().__int__() + 30 * 60
+            dt = time.strftime( fmt, time.localtime( dt ) )
 
         dt = dt[:-4] + '.000Z'
 
