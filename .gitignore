@@ -9,3 +9,4 @@ tags
 *.log
 
 python/tempfile/tmp/
+python2/tempfile/tmp/
