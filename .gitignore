@@ -12,3 +12,4 @@ tags
 *.crt
 
 python/tempfile/tmp/
+python2/tempfile/tmp/
