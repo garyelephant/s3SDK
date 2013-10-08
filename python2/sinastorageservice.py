@@ -589,6 +589,8 @@ class S3( object ):
                     lk.startswith( 'x-amz-' ):
                     continue
 
+            if type( k ) == types.UnicodeType:
+                k = k.encode( 'utf-8' )
             if type( v ) == types.UnicodeType:
                 v = v.encode( 'utf-8' )
 
