@@ -1,12 +1,8 @@
 import os
-import sys
-import stat
-import copy
 import time
 import json
 import types
 import datetime
-
 import re
 import hmac
 import base64
@@ -16,15 +12,15 @@ import httplib
 import mimetypes
 
 
-
 def ftype( f ):
     tp = mimetypes.guess_type( f )[ 0 ]
     return tp or 'application/octet-stream'
 
-
 def fsize( f ):
-    return os.path.getsize( f )
-
+    try:
+        return os.path.getsize( f )
+    except OSError, e:
+        raise
 
 def encode_multipart_formdata( fields, files ):
     """
@@ -32,7 +28,6 @@ def encode_multipart_formdata( fields, files ):
     files is a sequence of (name, filename, value) elements for data to be uploaded as files
     Return (content_type, body) ready for httplib.HTTP instance
     """
-
     BOUNDARY = '---------------------------this_boundary$'
     CRLF = '\r\n'
 
@@ -59,7 +54,6 @@ def encode_multipart_formdata( fields, files ):
     return content_type, body
 
 
-
 class S3Error( Exception ): pass
 
 class S3HTTPError( S3Error ): pass
@@ -69,17 +63,15 @@ class S3ResponseError( S3Error ): pass
 
 
 class S3( object ):
-
     """
     python SDK for Sina Storage Service
     SVN : svn checkout http://sinastorage-clients.googlecode.com/svn/trunk/ sinastorage-clients-read-only
     Original Docs: http://sinastorage.sinaapp.com/developer/interface/aws/operate_object.html
     """
 
+    CHUNK = 1024 * 1024
     DEFAULT_DOMAIN = 'sinastorage.com'
     DEFAULT_UP_DOMAIN = 'up.sinastorage.com'
-
-    CHUNK = 1024 * 1024
 
     EXTRAS = [ 'copy', ]
     QUERY_STRING = [ 'ip', 'foo', ]
@@ -100,18 +92,7 @@ class S3( object ):
         self.accesskey = accesskey or 'SYS0000000000SANDBOX'
         self.ACCESSKEY = accesskey or 'SYS0000000000SANDBOX'
 
-        if len( self.accesskey ) != len( 'SYS0000000000SANDBOX' ) \
-                or '0' not in self.accesskey:
-            raise S3Error, "accesskey '%s' is illegal." % \
-                    ( self.accesskey, )
-
-        self.nation = self.accesskey.split( '0' )[0].lower()
-        self.nation = 'sae' if self.nation == '' else self.nation
-
-        if self.nation == 'sae':
-            self.accesskey = self.accesskey[ -10: ].lower()
-        else:
-            self.accesskey = self.accesskey.split( '0' )[-1].lower()
+        self.nation, self.accesskey = parse_accesskey( self.accesskey )
 
         self.secretkey = secretkey or '1' * 40
         self.project = project or 'sandbox'
@@ -916,11 +897,27 @@ class S3( object ):
         conn.request( 'POST', uri, body, h )
 
         resp = conn.getresponse()
+
         return resp
 
+def parse_accesskey( acc ):
 
+    if len( acc ) != len( 'GRPS000000ANONYMOUSE' ):
+        raise S3Error, "accesskey '%s' is illegal." % ( acc, )
 
-if __name__ == '__main__':
+    nation = acc.split( '0' )[ 0 ].lower()
+    nation = 'sae' if nation == '' else nation
 
-    pass
+    if nation == 'sae':
+        uid = acc[ -10: ].lower()
+    else:
+        uid = acc[ -10: ].lower().lstrip( '0' )
 
+    return ( nation, uid )
+
+def escape( s ):
+    if type( s ) == type( u'' ):
+        s = s.encode( 'utf-8' )
+    else:
+        s = str( s )
+    return urllib.quote_plus( s )
