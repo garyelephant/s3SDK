@@ -411,6 +411,34 @@ class S3( object ):
         return self._normal_return( func, verb, uri )
 
 
+    def upload_file_ssk( self, ssk_prefix, fn, key = None ):
+
+        func = "upload file ssk error='{error}'"
+
+        self.intra_header[ 'Content-Type' ] = str( ftype( fn ) )
+        self.intra_header[ 'Content-Length' ] = str( fsize( fn ) )
+
+        if key is not None:
+            self.intra_header[ 'x-sina-additional-indexed-key' ] = str( key )
+
+        verb = 'PUT'
+        uri = self._get_uri( verb, 'ssk/' + ssk_prefix )
+
+        try:
+            resp = self._request_put_file( verb, uri, fn )
+
+            if resp.status != int( httplib.OK ):
+
+                raise S3HTTPCodeError, func.format( \
+                        error = self._resp_format( resp ), )
+
+            return self._resp_format( resp ), resp.getheader('x-sina-serverside-key', None)
+
+        except Exception, e:
+
+            raise
+
+
     def copy_file( self, key, src, project = None ):
 
         func = "copy_file error='{error}'"

@@ -79,6 +79,33 @@ def test_uplaod_file( h ):
         logging.error( "uplaod_file key='{key}' error out='{out}'".format( key = key, out = repr( e ) ) )
 
 
+def test_upload_file_ssk( h):
+
+    ssk_prefix = 'test_server_side_key/'
+
+    # key为None,上传文件后将仅能获取server-side key,其能用于s3的get_file()接口
+    #key = None
+    # key可用于所有接口
+    key = 'DONOT_README'
+
+    fn = os.path.join( tempdir, 'DONOT_README' )
+
+    ssk = None
+
+    try:
+        out, ssk = h.upload_file_ssk( ssk_prefix, fn, key )
+        print out
+        print 'server-side key:', ssk
+        logging.info( "uplaod_file server-side-key-prefix = '{ssk_prefix}' key='{key}' ok out='{out}'" \
+             .format( ssk_prefix = ssk_prefix, key = key, out = out ) )
+    except Exception, e:
+        print e
+        logging.error( "uplaod_file server-side-key-prefix = '{ssk_prefix}' key='{key}' error out='{out}'" \
+             .format( ssk_prefix = ssk_prefix, key = ssk_prefix, out = repr( e ) ) )
+
+    return ssk
+
+
 def test_post_file( h ):
 
     key = 'test/POST_FILE'
@@ -207,6 +234,8 @@ if __name__ == "__main__":
     test_uplaod_file( handle )
     #test_upload_file_relax( handle )
     #test_copy_file( handle )
+
+    #test_upload_file_ssk( handle )
 
     #test_get_file( handle )
     #test_get_file_url( handle )
