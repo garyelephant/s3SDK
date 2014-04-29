@@ -547,9 +547,9 @@ class S3( object ):
                 self.VERB2HTTPCODE.get( verb, httplib.OK ) )
 
         try:
-            resp = self._requst( verb, uri ) \
+            resp = self._request( verb, uri ) \
                     if infile is None \
-                    else self._requst_put_file( verb, uri, infile )
+                    else self._request_put_file( verb, uri, infile )
 
             if resp.status != code:
 
@@ -585,7 +585,7 @@ class S3( object ):
         return r
 
 
-    def _requst( self, verb, uri ):
+    def _request( self, verb, uri ):
 
         header = {}
         header.update( self.intra_header )
@@ -617,7 +617,7 @@ class S3( object ):
             #                e = repr( e ), )
 
 
-    def _requst_put_file( self, verb, uri, fn ):
+    def _request_put_file( self, verb, uri, fn ):
 
         header = {}
         header.update( self.intra_header )
@@ -714,7 +714,7 @@ class S3( object ):
 
         return qs + '&' if qs != '' else ''
 
-    def _generate_requst_header( self ):
+    def _generate_request_header( self ):
 
         requst_header = {}
         requst_header.update( self.intra_header )
@@ -762,7 +762,7 @@ class S3( object ):
 
         return qs + '&' if qs != '' else ''
 
-    def _fix_requst_header( self, verb = 'GET' ):
+    def _fix_request_header( self, verb = 'GET' ):
 
         fix_key = [ 's-sina-sha1',
                     'content-sha1',
@@ -813,7 +813,7 @@ class S3( object ):
 
             return uri.rstrip( '?&' )
 
-        rh = self._generate_requst_header()
+        rh = self._generate_request_header()
 
         hashinfo = rh.get( 'hash-info', '' )
         ct = rh.get( 'content-type', '' )
@@ -828,7 +828,7 @@ class S3( object ):
             ct = ''
             mts = []
 
-            self._fix_requst_header( verb )
+            self._fix_request_header( verb )
 
         dt = self._generate_expires()
 
