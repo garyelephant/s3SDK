@@ -368,7 +368,7 @@ class S3( object ):
         except:
             raise
 
-        resp = self._mulitpart_post( uri,
+        resp = self._multipart_post( uri,
                                      fields = fd,
                                      files = [ ( 'file', fn, content ) ],
                                      headers = h )
@@ -885,7 +885,7 @@ class S3( object ):
         return policy, ssig
 
 
-    def _mulitpart_post( self, uri, fields = [], files = [], headers = None ):
+    def _multipart_post( self, uri, fields = [], files = [], headers = None ):
 
         content_type, body = encode_multipart_formdata( fields, files )
 
