@@ -156,26 +156,7 @@ def test_delete_file( h ):
     print h.delete_file( key )
 
 
-
 def test_upload_dirall( dir ):
-
-    def listdir( dir ):
-
-        r = []
-        ff = os.listdir( dir )
-
-        ff = [ os.path.join( dir, f ) for f in ff ]
-
-        for f in ff:
-            if os.path.isfile( f ):
-                r += [ f ]
-            elif os.path.isdir( f ):
-                r += listdir( f )[ : ]
-            else:
-                pass
-
-        return r
-
 
     def _upload( key, fn ):
 
@@ -194,15 +175,14 @@ def test_upload_dirall( dir ):
     threadpool = pool.WorkerPool( 10 )
     upload = threadpool.runwithpool( _upload )
 
+    files = [ os.path.join( dirpath,name ) for dirpath, dirnames, filenames in os.walk( dir ) for name in filenames ]
 
-    files = listdir( dir )
     keys = [ key[ len( dir ) + 1: ] for key in files ]
 
     for key, fn in zip( keys, files ):
         upload( key, fn )
 
     threadpool.join()
-
 
 
 def test_uplaod_bigfile():
