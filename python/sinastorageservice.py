@@ -493,7 +493,7 @@ class S3( object ):
         self.intra_query_specific[ 'prefix' ] = str( prefix or '' )
         self.intra_query_specific[ 'marker' ] = str( marker or '' )
         self.intra_query_specific[ 'max-keys' ] = str( maxkeys or 10 )
-        self.intra_query_specific[ 'delimiter' ] = str( delimiter or '' )
+        self.intra_query_specific[ 'delimiter' ] = str( delimiter or '/' )
 
         verb = 'GET'
         uri = self._get_uri( verb )

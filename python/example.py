@@ -136,7 +136,7 @@ def test_get_files_list( h ):
     prefix = 'rela'
     marker = 'relax'
     maxkeys = 5
-    delimiter = ''
+    delimiter = '/'
 
     print h.get_files_list( prefix, marker, maxkeys, delimiter )
 
