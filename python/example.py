@@ -46,9 +46,9 @@ def _set( h ):
                             'foo' : 'bar',
                             } )
 
-    h.set_requst_header( {  'Content-Length' : '2013',
-                            'Content-Type' : 'text/plain',
-                            'Content-Disposition' : 'attachment; filename="ramanujan.txt"',
+    h.set_request_header( {  'Content-Length' : '2013',
+                             'Content-Type' : 'text/plain',
+                             'Content-Disposition' : 'attachment; filename="ramanujan.txt"',
                             } )
 
     h.set_query_specific( { 'formatter' : 'json',

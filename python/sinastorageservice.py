@@ -112,7 +112,7 @@ class S3( object ):
 
         self.extra = '?'
         self.query_string = {}
-        self.requst_header = {}
+        self.request_header = {}
         self.query_specific = {}
 
         self.is_ssl = False
@@ -195,9 +195,9 @@ class S3( object ):
             else:
                 self.query_specific[ k ] = d[ k ]
 
-    def set_requst_header( self, rh = None ):
+    def set_request_header( self, rh = None ):
 
-        self.requst_header.update( rh or {} )
+        self.request_header.update( rh or {} )
 
     def set_query_specific( self, qs = None ):
 
@@ -368,7 +368,7 @@ class S3( object ):
         except:
             raise
 
-        resp = self._mulitpart_post( uri,
+        resp = self._multipart_post( uri,
                                      fields = fd,
                                      files = [ ( 'file', fn, content ) ],
                                      headers = h )
@@ -547,9 +547,9 @@ class S3( object ):
                 self.VERB2HTTPCODE.get( verb, httplib.OK ) )
 
         try:
-            resp = self._requst( verb, uri ) \
+            resp = self._request( verb, uri ) \
                     if infile is None \
-                    else self._requst_put_file( verb, uri, infile )
+                    else self._request_put_file( verb, uri, infile )
 
             if resp.status != code:
 
@@ -585,11 +585,11 @@ class S3( object ):
         return r
 
 
-    def _requst( self, verb, uri ):
+    def _request( self, verb, uri ):
 
         header = {}
         header.update( self.intra_header )
-        header.update( self.requst_header )
+        header.update( self.request_header )
 
         for k in header:
             if type( header[ k ] ) == types.UnicodeType:
@@ -617,11 +617,11 @@ class S3( object ):
             #                e = repr( e ), )
 
 
-    def _requst_put_file( self, verb, uri, fn ):
+    def _request_put_file( self, verb, uri, fn ):
 
         header = {}
         header.update( self.intra_header )
-        header.update( self.requst_header )
+        header.update( self.request_header )
 
         for k in header:
             if type( header[ k ] ) == types.UnicodeType:
@@ -714,16 +714,16 @@ class S3( object ):
 
         return qs + '&' if qs != '' else ''
 
-    def _generate_requst_header( self ):
+    def _generate_request_header( self ):
 
-        requst_header = {}
-        requst_header.update( self.intra_header )
-        requst_header.update( self.requst_header )
+        request_header = {}
+        request_header.update( self.intra_header )
+        request_header.update( self.request_header )
 
         rh = dict( [ ( k.lower(), v.encode( 'utf-8' ) ) \
                 if type( v ) == types.UnicodeType else \
                     ( k.lower(), str( v ) )
-                        for k, v in requst_header.items() ] )
+                        for k, v in request_header.items() ] )
 
         for t in ( 's-sina-sha1', 'content-sha1', \
                 's-sina-md5', 'content-md5' ):
@@ -762,7 +762,7 @@ class S3( object ):
 
         return qs + '&' if qs != '' else ''
 
-    def _fix_requst_header( self, verb = 'GET' ):
+    def _fix_request_header( self, verb = 'GET' ):
 
         fix_key = [ 's-sina-sha1',
                     'content-sha1',
@@ -770,7 +770,7 @@ class S3( object ):
                     'content-md5',
                     'content-type', ]
 
-        for d in [ self.intra_header, self.requst_header ]:
+        for d in [ self.intra_header, self.request_header ]:
             for k in d.keys():
                 kk = k.lower()
                 if kk in fix_key or \
@@ -813,7 +813,7 @@ class S3( object ):
 
             return uri.rstrip( '?&' )
 
-        rh = self._generate_requst_header()
+        rh = self._generate_request_header()
 
         hashinfo = rh.get( 'hash-info', '' )
         ct = rh.get( 'content-type', '' )
@@ -828,7 +828,7 @@ class S3( object ):
             ct = ''
             mts = []
 
-            self._fix_requst_header( verb )
+            self._fix_request_header( verb )
 
         dt = self._generate_expires()
 
@@ -885,7 +885,7 @@ class S3( object ):
         return policy, ssig
 
 
-    def _mulitpart_post( self, uri, fields = [], files = [], headers = None ):
+    def _multipart_post( self, uri, fields = [], files = [], headers = None ):
 
         content_type, body = encode_multipart_formdata( fields, files )
 
