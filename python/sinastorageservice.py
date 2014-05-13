@@ -432,7 +432,13 @@ class S3( object ):
                 raise S3HTTPCodeError, func.format( \
                         error = self._resp_format( resp ), )
 
-            return self._resp_format( resp ), resp.getheader('x-sina-serverside-key', None)
+            sskey = resp.getheader( 'x-sina-serverside-key', None )
+            if sskey is not None:
+                # raise a exception, because ssk upload failed
+                pass
+            sskey = unescape( sskey )
+
+            return self._resp_format( resp ), sskey
 
         except Exception, e:
 
@@ -949,3 +955,6 @@ def escape( s ):
     else:
         s = str( s )
     return urllib.quote_plus( s )
+
+def unescape( s ):
+    return urllib.unquote_plus( s )

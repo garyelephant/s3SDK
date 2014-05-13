@@ -79,7 +79,7 @@ def test_uplaod_file( h ):
         logging.error( "uplaod_file key='{key}' error out='{out}'".format( key = key, out = repr( e ) ) )
 
 
-def test_upload_file_ssk( h):
+def test_upload_file_ssk( h ):
 
     ssk_prefix = 'test_server_side_key/'
 
