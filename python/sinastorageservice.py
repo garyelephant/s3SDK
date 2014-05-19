@@ -112,7 +112,7 @@ class S3( object ):
 
         self.extra = '?'
         self.query_string = {}
-        self.requst_header = {}
+        self.request_header = {}
         self.query_specific = {}
 
         self.is_ssl = False
@@ -195,9 +195,9 @@ class S3( object ):
             else:
                 self.query_specific[ k ] = d[ k ]
 
-    def set_requst_header( self, rh = None ):
+    def set_request_header( self, rh = None ):
 
-        self.requst_header.update( rh or {} )
+        self.request_header.update( rh or {} )
 
     def set_query_specific( self, qs = None ):
 
@@ -424,19 +424,19 @@ class S3( object ):
         verb = 'PUT'
         uri = self._get_uri( verb, 'ssk/' + ssk_prefix )
 
-        try:
-            resp = self._request_put_file( verb, uri, fn )
+        resp = self._request_put_file( verb, uri, fn )
 
-            if resp.status != int( httplib.OK ):
+        if resp.status != int( httplib.OK ):
+            raise S3HTTPCodeError, func.format( error = self._resp_format( resp ), )
 
-                raise S3HTTPCodeError, func.format( \
-                        error = self._resp_format( resp ), )
+        sskey = resp.getheader( 'x-sina-serverside-key', None )
+        if sskey is None:
+            raise S3ResponseError, func.format( error = \
+                'http response lost header:{header}'.format( header = 'x-sina-serverside-key' ), )
+            
+        sskey = unescape( sskey )
 
-            return self._resp_format( resp ), resp.getheader('x-sina-serverside-key', None)
-
-        except Exception, e:
-
-            raise
+        return self._resp_format( resp ), sskey
 
 
     def copy_file( self, key, src, project = None ):
@@ -521,8 +521,7 @@ class S3( object ):
         self.intra_query_specific[ 'prefix' ] = str( prefix or '' )
         self.intra_query_specific[ 'marker' ] = str( marker or '' )
         self.intra_query_specific[ 'max-keys' ] = str( maxkeys or 10 )
-        if delimiter is not None:
-            self.intra_query_specific[ 'delimiter' ] = str( delimiter )
+        self.intra_query_specific[ 'delimiter' ] = str( delimiter or '/' )
 
         verb = 'GET'
         uri = self._get_uri( verb )
@@ -618,7 +617,7 @@ class S3( object ):
 
         header = {}
         header.update( self.intra_header )
-        header.update( self.requst_header )
+        header.update( self.request_header )
 
         for k in header:
             if type( header[ k ] ) == types.UnicodeType:
@@ -650,7 +649,7 @@ class S3( object ):
 
         header = {}
         header.update( self.intra_header )
-        header.update( self.requst_header )
+        header.update( self.request_header )
 
         for k in header:
             if type( header[ k ] ) == types.UnicodeType:
@@ -745,14 +744,14 @@ class S3( object ):
 
     def _generate_request_header( self ):
 
-        requst_header = {}
-        requst_header.update( self.intra_header )
-        requst_header.update( self.requst_header )
+        request_header = {}
+        request_header.update( self.intra_header )
+        request_header.update( self.request_header )
 
         rh = dict( [ ( k.lower(), v.encode( 'utf-8' ) ) \
                 if type( v ) == types.UnicodeType else \
                     ( k.lower(), str( v ) )
-                        for k, v in requst_header.items() ] )
+                        for k, v in request_header.items() ] )
 
         for t in ( 's-sina-sha1', 'content-sha1', \
                 's-sina-md5', 'content-md5' ):
@@ -799,7 +798,7 @@ class S3( object ):
                     'content-md5',
                     'content-type', ]
 
-        for d in [ self.intra_header, self.requst_header ]:
+        for d in [ self.intra_header, self.request_header ]:
             for k in d.keys():
                 kk = k.lower()
                 if kk in fix_key or \
@@ -950,3 +949,6 @@ def escape( s ):
     else:
         s = str( s )
     return urllib.quote_plus( s )
+
+def unescape( s ):
+    return urllib.unquote_plus( s )

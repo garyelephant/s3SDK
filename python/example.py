@@ -46,9 +46,9 @@ def _set( h ):
                             'foo' : 'bar',
                             } )
 
-    h.set_requst_header( {  'Content-Length' : '2013',
-                            'Content-Type' : 'text/plain',
-                            'Content-Disposition' : 'attachment; filename="ramanujan.txt"',
+    h.set_request_header( {  'Content-Length' : '2013',
+                             'Content-Type' : 'text/plain',
+                             'Content-Disposition' : 'attachment; filename="ramanujan.txt"',
                             } )
 
     h.set_query_specific( { 'formatter' : 'json',
@@ -79,7 +79,7 @@ def test_uplaod_file( h ):
         logging.error( "uplaod_file key='{key}' error out='{out}'".format( key = key, out = repr( e ) ) )
 
 
-def test_upload_file_ssk( h):
+def test_upload_file_ssk( h ):
 
     ssk_prefix = 'test_server_side_key/'
 
@@ -183,27 +183,27 @@ def test_delete_file( h ):
     print h.delete_file( key )
 
 
+def _upload( key, fn ):
+
+    handle = s3.S3( conf.accesskey, conf.secretkey, conf.project )
+    handle.set_need_auth()
+
+    try:
+        out = handle.upload_file( key, fn )
+        logging.info( "key='{key}' ok out='{out}'".format( key = key, out = out ) )
+    except Exception, e:
+        logging.error( "key='{key}' error out='{out}'".format( key = key, out = repr( e ) ) )
+
 def test_upload_dirall( dir ):
-
-    def _upload( key, fn ):
-
-        handle = s3.S3( conf.accesskey, conf.secretkey, conf.project )
-        handle.set_need_auth()
-
-        try:
-            out = handle.upload_file( key, fn )
-            logging.info( "uplaod_file key='{key}' ok out='{out}'".format( key = key, out = out ) )
-        except Exception, e:
-            logging.error( "uplaod_file key='{key}' error out='{out}'".format( key = key, out = repr( e ) ) )
-
 
     import pool
 
     threadpool = pool.WorkerPool( 10 )
     upload = threadpool.runwithpool( _upload )
 
-    files = [ os.path.join( dirpath,name ) for dirpath, dirnames, filenames in os.walk( dir ) for name in filenames ]
-
+    files = [ os.path.join( dirpath, name ) \
+                    for dirpath, dirnames, filenames in os.walk( dir ) \
+                        for name in filenames ]
     keys = [ key[ len( dir ) + 1: ] for key in files ]
 
     for key, fn in zip( keys, files ):
